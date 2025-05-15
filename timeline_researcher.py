@@ -96,7 +96,7 @@ def search_events_with_perplexity():
                 "role": "system",
                 "content": (
                     "You are a precise research assistant specialised in real-time global news extraction. "
-                    "Respond ONLY in English and strictly follow the user instructions."
+                    "Respond ONLY in English and strictly follow the user instructions. Output EXACTLY the JSON that matches the provided schema – no markdown fences, no commentary."
                 )
             },
             {
@@ -109,8 +109,7 @@ def search_events_with_perplexity():
                     "3) Return an array named 'events', where each item contains: \n"
                     "   • title – concise, ≤90 characters, written as a compelling headline.\n"
                     "   • summary – 400-600 characters explaining what happened, why it matters, and key details.\n"
-                    "4) Output EXACTLY the JSON that matches the provided schema – no markdown fences, no commentary, no <think> sections.\n"
-                    "5) Use neutral, factual language." 
+                    "4) Use neutral, factual language." 
                 )
             }
         ],
@@ -182,10 +181,13 @@ def search_events_with_perplexity():
     # Construct complete event objects with placeholder fields
     complete_events = []
     for event in events:
+        # Clean citation markers from summary
+        cleaned_summary = re.sub(r'\[\d+\]', '', event['summary'])
+        
         complete_events.append({
             'date': datetime.now().isoformat(),
             'title': event['title'],
-            'summary': event['summary'],
+            'summary': cleaned_summary,
             'content': '',
             'sources': []
         })
@@ -246,7 +248,12 @@ def research_event_details(event):
                 "content": (
                     "You are an expert investigative journalist who produces comprehensive, in-depth analyses of current events. "
                     "Your analyses are thorough, well-researched, and include historical context, current developments, and future implications. "
-                    "Respond ONLY in English and deliver factual content with professional tone."
+                    "Respond ONLY in English and deliver factual content with professional tone. Structure your response using clear GitHub-flavoured Markdown. Formatting rules:\n"
+                    "• Use headings with ##, ###, etc.\n"
+                    "• Insert ONE blank line between paragraphs.\n"
+                    "• Insert ONE blank line *before* starting any list (-, *, +, 1. …).\n"
+                    "• Avoid trailing spaces at the ends of lines.\n"
+                    "• Use **bold**, *italic* when needed.\n"
                 )
             },
             {
@@ -256,10 +263,8 @@ def research_event_details(event):
                     "Requirements:\n"
                     "1) Deliver a thorough analysis including historical context, key players, current developments, global implications, and potential future outcomes.\n"
                     "2) Include relevant statistics, expert opinions, and critical perspectives where available.\n"
-                    "3) Structure your response with clear sections but do NOT use markdown headings.\n"
-                    "4) Write in a formal, analytical style appropriate for a serious news publication.\n"
-                    "5) Do NOT include <think> sections or wrap the response in code blocks.\n"
-                    "6) Use only verifiable facts from reputable sources."
+                    "3) Write in a formal, analytical style appropriate for a serious news publication.\n"
+                    "4) Use only verifiable facts from reputable sources."
                 )
             }
         ],
@@ -289,8 +294,9 @@ def research_event_details(event):
     if think_match:
         response_text = think_match.group(2).strip()
 
-    # Use full response as content
-    content = response_text.strip()
+    # Remove citation markers like [1], [2] while preserving markdown formatting
+    cleaned_content = re.sub(r'\[\d+\]', '', response_text).strip()
+    content = cleaned_content
     
     # Extract citation metadata
     sources = response_json.get('citations', [])
