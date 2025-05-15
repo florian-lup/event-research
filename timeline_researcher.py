@@ -13,11 +13,18 @@ from openai import OpenAI
 
 # Set up logger
 logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
 
 # Load environment variables
 load_dotenv()
 
-# API Keys and Configuration
+# API configuration
 PERPLEXITY_API_KEY = os.getenv('PERPLEXITY_API_KEY')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 PINECONE_API_KEY = os.getenv('PINECONE_API_KEY')
@@ -31,15 +38,15 @@ logger.info("Initialized Pinecone client")
 mongo_client = MongoClient(MONGODB_URI)
 logger.info("Initialized MongoDB client")
 
-# Initialize OpenAI client once (best practice)
+# Initialize OpenAI client (singleton pattern)
 from openai import OpenAI as _OpenAIClient
 openai_client = _OpenAIClient(api_key=OPENAI_API_KEY)
 logger.info("Initialized OpenAI client")
 
-# Shared HTTP session for Perplexity – keeps TCP connection alive
+# Shared HTTP session for Perplexity to optimize connection reuse
 perplexity_session = requests.Session()
 
-# Shared Pinecone index (initialised lazily)
+# Shared Pinecone index (initialized lazily)
 pinecone_index = None  # type: ignore
 
 # Constants
@@ -50,7 +57,7 @@ SIMILARITY_THRESHOLD = 0.8
 CURRENT_DATE = datetime.now().strftime("%m/%d/%Y")
 
 def create_pinecone_index_if_not_exists():
-    """Return a shared Pinecone index, creating it on first call."""
+    """Create or retrieve the Pinecone vector index using singleton pattern"""
     global pinecone_index
     if pinecone_index is not None:
         return pinecone_index
@@ -74,7 +81,7 @@ def create_pinecone_index_if_not_exists():
     return pinecone_index
 
 def search_events_with_perplexity():
-    """Search for top 5 global events using Perplexity API"""
+    """Query Perplexity API to identify significant global events from today"""
     logger.info("Searching for top 5 global events with Perplexity API...")
     
     headers = {
@@ -87,16 +94,29 @@ def search_events_with_perplexity():
         "messages": [
             {
                 "role": "system",
-                "content": "You are a helpful assistant."
+                "content": (
+                    "You are a precise research assistant specialised in real-time global news extraction. "
+                    "Respond ONLY in English and strictly follow the user instructions."
+                )
             },
             {
                 "role": "user",
-                "content": "Research and identify top 5 of the most significant global events"
+                "content": (
+                    f"Identify the five most significant global events that occurred on {CURRENT_DATE}.\n"
+                    "Requirements:\n"
+                    "1) Use reputable international sources published within the last 24 hours.\n"
+                    "2) Cover diverse topics and geographic regions (e.g. politics, economy, science, technology, environment, health, conflict, culture).\n"
+                    "3) Return an array named 'events', where each item contains: \n"
+                    "   • title – concise, ≤90 characters, written as a compelling headline.\n"
+                    "   • summary – 400-600 characters explaining what happened, why it matters, and key details.\n"
+                    "4) Output EXACTLY the JSON that matches the provided schema – no markdown fences, no commentary, no <think> sections.\n"
+                    "5) Use neutral, factual language." 
+                )
             }
         ],
-        "temperature": 0.5,
         "search_after_date_filter": CURRENT_DATE,
         "search_before_date_filter": CURRENT_DATE,
+        "web_search_options": {"search_context_size": "medium"},
         "response_format": {
             "type": "json_schema",
             "json_schema": {
@@ -131,21 +151,21 @@ def search_events_with_perplexity():
         logger.error(f"Error from Perplexity API: {response.status_code} - {response.text}")
         raise Exception(f"Perplexity API error: {response.status_code}")
     
-    # Extract JSON from the response (after the <think> section)
+    # Extract JSON from the response
     response_text = response.json()['choices'][0]['message']['content']
     logger.info(f"Response from Perplexity: {response_text[:100]}...")  # Log beginning of response
     
-    # Check for <think> tag and extract content after it
+    # Handle <think> tag sections if present
     think_match = re.search(r'<think>(.*?)</think>(.*)', response_text, re.DOTALL)
     if think_match:
         # Extract the content after </think>
         response_text = think_match.group(2).strip()
     
-    # Try to find JSON in the response
+    # Extract JSON from various possible formats
     json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
     
     if not json_match:
-        # Try to find JSON without the markdown code blocks
+        # Fallback to find JSON without markdown code blocks
         json_match = re.search(r'(\{.*\})', response_text, re.DOTALL)
         if not json_match:
             logger.error(f"Could not parse JSON from Perplexity response: {response_text}")
@@ -159,7 +179,7 @@ def search_events_with_perplexity():
         logger.error(f"JSON parsing error: {e}. Text: {json_text}")
         raise Exception(f"Failed to parse JSON: {e}")
     
-    # Create complete event objects
+    # Construct complete event objects with placeholder fields
     complete_events = []
     for event in events:
         complete_events.append({
@@ -174,7 +194,7 @@ def search_events_with_perplexity():
     return complete_events
 
 def generate_embedding(text):
-    """Generate embedding vector for the given text using the shared OpenAI client"""
+    """Convert text to vector representation using OpenAI embeddings API"""
     logger.info(f"Generating embedding for text: {text[:50]}...")
 
     try:
@@ -191,7 +211,7 @@ def generate_embedding(text):
         raise
 
 def check_duplicate_in_pinecone(pinecone_index, embedding, metadata):
-    """Check if event already exists in Pinecone"""
+    """Detect semantic duplicates by checking vector similarity against threshold"""
     logger.info(f"Checking for duplicates for: {metadata['title']}")
     
     query_response = pinecone_index.query(
@@ -200,7 +220,7 @@ def check_duplicate_in_pinecone(pinecone_index, embedding, metadata):
         include_metadata=True
     )
     
-    # Check if any result has similarity above threshold
+    # Compare similarity scores against threshold
     for match in query_response.matches:
         if match.score >= SIMILARITY_THRESHOLD:
             logger.info(f"Found duplicate: {metadata['title']} - Similarity: {match.score}")
@@ -210,7 +230,7 @@ def check_duplicate_in_pinecone(pinecone_index, embedding, metadata):
     return False
 
 def research_event_details(event):
-    """Research additional details for an event using Perplexity API"""
+    """Enrich event with comprehensive analysis and source citations"""
     logger.info(f"Researching details for event: {event['title']}")
     
     headers = {
@@ -223,15 +243,28 @@ def research_event_details(event):
         "messages": [
             {
                 "role": "system",
-                "content": "You are a helpful assistant."
+                "content": (
+                    "You are an expert investigative journalist who produces comprehensive, in-depth analyses of current events. "
+                    "Your analyses are thorough, well-researched, and include historical context, current developments, and future implications. "
+                    "Respond ONLY in English and deliver factual content with professional tone."
+                )
             },
             {
                 "role": "user",
-                "content": f"Research this event '{event['title']}' and create an analysis"
+                "content": (
+                    f"Provide a comprehensive, in-depth analysis of this significant global event: '{event['title']}'.\n"
+                    "Requirements:\n"
+                    "1) Deliver a thorough analysis including historical context, key players, current developments, global implications, and potential future outcomes.\n"
+                    "2) Include relevant statistics, expert opinions, and critical perspectives where available.\n"
+                    "3) Structure your response with clear sections but do NOT use markdown headings.\n"
+                    "4) Write in a formal, analytical style appropriate for a serious news publication.\n"
+                    "5) Do NOT include <think> sections or wrap the response in code blocks.\n"
+                    "6) Use only verifiable facts from reputable sources."
+                )
             }
         ],
-        "temperature": 0.5,
-        "search_recency_filter": "day"
+        "search_recency_filter": "day",
+        "web_search_options": {"search_context_size": "high"}
     }
     
     response = perplexity_session.post(
@@ -247,23 +280,23 @@ def research_event_details(event):
     # Parse the full JSON response
     response_json = response.json()
     
-    # Extract content from the response (after the <think> section)
+    # Extract content from the response
     response_text = response_json['choices'][0]['message']['content']
-    logger.info(f"Response from Perplexity (event research): {response_text[:100]}...")  # Log beginning of response
+    logger.info(f"Response from Perplexity (event research): {response_text[:100]}...")
     
     # Remove <think> block if present
     think_match = re.search(r'<think>(.*?)</think>(.*)', response_text, re.DOTALL | re.IGNORECASE)
     if think_match:
         response_text = think_match.group(2).strip()
 
-    # Extract content (whole text without any filtering)
+    # Use full response as content
     content = response_text.strip()
     
-    # Extract sources from the citations field in the API response
+    # Extract citation metadata
     sources = response_json.get('citations', [])
     logger.info(f"Found {len(sources)} citations from Perplexity API")
     
-    # Update event
+    # Update event with detailed information
     event['content'] = content
     event['sources'] = sources
     
@@ -271,19 +304,19 @@ def research_event_details(event):
     return event
 
 def upsert_to_pinecone(pinecone_index, event, embedding):
-    """Upsert event to Pinecone"""
+    """Store event vector in Pinecone for semantic search and deduplication"""
     logger.info(f"Upserting event to Pinecone: {event['title']}")
     
-    # Create a unique ID for the event
+    # Create deterministic ID from title hash
     event_id = f"event_{hash(event['title'])}"
     
-    # Prepare metadata
+    # Store essential metadata for search results
     metadata = {
         'title': event['title'],
         'summary': event['summary']
     }
     
-    # Upsert to Pinecone
+    # Store vector and metadata
     pinecone_index.upsert(
         vectors=[
             (event_id, embedding, metadata)
@@ -293,48 +326,48 @@ def upsert_to_pinecone(pinecone_index, event, embedding):
     logger.info(f"Successfully upserted event to Pinecone: {event['title']}")
 
 def store_to_mongodb(event):
-    """Store event to MongoDB"""
+    """Persist full event details to MongoDB document database"""
     logger.info(f"Storing event to MongoDB: {event['title']}")
     
     db = mongo_client['events']
     collection = db['global']
     
-    # Insert event
+    # Insert complete event document
     result = collection.insert_one(event)
     
     logger.info(f"Successfully stored event to MongoDB with ID: {result.inserted_id}")
 
 def main():
-    """Main workflow function"""
+    """Orchestrate end-to-end event discovery, deduplication, and storage workflow"""
     logger.info("Starting timeline researcher workflow")
     
     try:
-        # Step 1: Search events with Perplexity API
+        # Step 1: Search for recent significant events
         events = search_events_with_perplexity()
         total_events_found = len(events)
         
-        # Create/Get Pinecone index
+        # Initialize vector database
         pinecone_index = create_pinecone_index_if_not_exists()
         
-        # Process each event
+        # Process each event for storage
         unique_events = []
         duplicate_count = 0
         for event in events:
-            # Step 2: Generate embedding
+            # Step 2: Generate vector representation
             combined_text = f"{event['title']} {event['summary']}"
             embedding = generate_embedding(combined_text)
             
-            # Step 3: Check for duplicates
+            # Step 3: Detect semantic duplicates
             is_duplicate = check_duplicate_in_pinecone(pinecone_index, embedding, {'title': event['title'], 'summary': event['summary']})
             
             if not is_duplicate:
-                # Step 4: Research event details
+                # Step 4: Enrich with detailed analysis
                 detailed_event = research_event_details(event)
                 unique_events.append((detailed_event, embedding))
             else:
                 duplicate_count += 1
             
-            # If all events are duplicates, stop
+            # Early exit if no unique events found
             if not unique_events:
                 logger.info("All events are duplicates, stopping workflow")
                 # Log statistics before exiting
@@ -345,17 +378,17 @@ def main():
                 logger.info(f"===================================")
                 return
         
-        # Steps 5 & 6: Store unique events
+        # Steps 5 & 6: Persist unique events to databases
         stored_count = 0
         for event, embedding in unique_events:
-            # Upsert to Pinecone
+            # Store vector representation
             upsert_to_pinecone(pinecone_index, event, embedding)
             
-            # Store to MongoDB
+            # Store complete document
             store_to_mongodb(event)
             stored_count += 1
         
-        # Log final statistics
+        # Log execution summary
         logger.info(f"=== Timeline Researcher Statistics ===")
         logger.info(f"Total events found: {total_events_found}")
         logger.info(f"Duplicate events: {duplicate_count}")

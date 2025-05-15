@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import logging
-from datetime import datetime
 from timeline_researcher import (
     search_events_with_perplexity,
     generate_embedding,
@@ -11,16 +10,15 @@ from timeline_researcher import (
     create_pinecone_index_if_not_exists
 )
 
-# Configure logging for all modules
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-# Get logger for this module
 logger = logging.getLogger(__name__)
 
 def test_search_events():
-    """Test searching for events with Perplexity API"""
+    """Test event searching via Perplexity API"""
     logger.info("Testing search_events_with_perplexity function...")
     try:
         events = search_events_with_perplexity()
@@ -33,7 +31,7 @@ def test_search_events():
         return None
 
 def test_embedding_generation(events):
-    """Test generating embeddings"""
+    """Test text-to-vector embedding conversion"""
     logger.info("Testing generate_embedding function...")
     if not events:
         logger.warning("No events to generate embeddings for, skipping test")
@@ -50,7 +48,7 @@ def test_embedding_generation(events):
         return None
 
 def test_pinecone_index():
-    """Test creating/getting Pinecone index"""
+    """Test Pinecone index creation or retrieval"""
     logger.info("Testing create_pinecone_index_if_not_exists function...")
     try:
         index = create_pinecone_index_if_not_exists()
@@ -61,7 +59,7 @@ def test_pinecone_index():
         return None
 
 def test_duplicate_check(index, embedding, event):
-    """Test duplicate checking"""
+    """Test similarity-based duplicate detection"""
     logger.info("Testing check_duplicate_in_pinecone function...")
     if not index or embedding is None or not event:
         logger.warning("Missing required inputs, skipping duplicate check test")
@@ -77,7 +75,7 @@ def test_duplicate_check(index, embedding, event):
         return None
 
 def test_event_research(event):
-    """Test event detail research"""
+    """Test detailed event information retrieval"""
     logger.info("Testing research_event_details function...")
     if not event:
         logger.warning("No event to research, skipping test")
@@ -94,7 +92,7 @@ def test_event_research(event):
         return None
 
 def test_pinecone_upsert(index, event, embedding):
-    """Test upserting to Pinecone"""
+    """Test vector database storage"""
     logger.info("Testing upsert_to_pinecone function...")
     if not index or not event or embedding is None:
         logger.warning("Missing required inputs, skipping Pinecone upsert test")
@@ -109,7 +107,7 @@ def test_pinecone_upsert(index, event, embedding):
         return False
 
 def test_mongodb_store(event):
-    """Test storing to MongoDB"""
+    """Test document database storage"""
     logger.info("Testing store_to_mongodb function...")
     if not event:
         logger.warning("No event to store, skipping test")
@@ -124,7 +122,7 @@ def test_mongodb_store(event):
         return False
 
 def main():
-    """Run all tests"""
+    """Execute full workflow test sequence"""
     logger.info("Starting timeline researcher workflow tests")
     
     # Test search
