@@ -248,12 +248,7 @@ def research_event_details(event):
                 "content": (
                     "You are an expert investigative journalist who produces comprehensive, in-depth analyses of current events. "
                     "Your analyses are thorough, well-researched, and include historical context, current developments, and future implications. "
-                    "Respond ONLY in English and deliver factual content with professional tone. Structure your response using clear GitHub-flavoured Markdown. Formatting rules:\n"
-                    "• Use headings with ##, ###, etc.\n"
-                    "• Insert ONE blank line between paragraphs.\n"
-                    "• Insert ONE blank line *before* starting any list (-, *, +, 1. …).\n"
-                    "• Avoid trailing spaces at the ends of lines.\n"
-                    "• Use **bold**, *italic* when needed.\n"
+                    "Respond ONLY in English and deliver factual content with professional tone. Structure your response using clear Markdown Formatting"
                 )
             },
             {
