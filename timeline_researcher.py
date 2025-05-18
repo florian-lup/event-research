@@ -9,7 +9,6 @@ from dotenv import load_dotenv
 import requests
 from pinecone import Pinecone
 from pymongo import MongoClient
-from openai import OpenAI
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -51,34 +50,39 @@ pinecone_index = None  # type: ignore
 
 # Constants
 PINECONE_INDEX_NAME = 'events'
-EMBEDDING_MODEL = 'text-embedding-3-small'
-EMBEDDING_DIMENSIONS = 1536
+# Embedding configuration (using a larger model for improved semantic quality)
+EMBEDDING_MODEL = 'text-embedding-3-large'
+EMBEDDING_DIMENSIONS = 3072
 SIMILARITY_THRESHOLD = 0.8
 CURRENT_DATE = datetime.now().strftime("%m/%d/%Y")
 
-def create_pinecone_index_if_not_exists():
-    """Create or retrieve the Pinecone vector index using singleton pattern"""
-    global pinecone_index
-    if pinecone_index is not None:
-        return pinecone_index
+# Pinecone namespace conventions
+OVERVIEW_NAMESPACE = 'overview'  # One vector per event (title + summary)
+CONTENT_NAMESPACE = 'content'    # Many vectors per event (chunked content)
 
-    logger.info("Checking if Pinecone index exists…")
-    indexes = pc.list_indexes()
-    index_names = [index.name for index in indexes]
+def _strip_think_blocks(text: str) -> str:
+    """Return the part of the reply that comes *after* the closing </think> tag."""
 
-    if PINECONE_INDEX_NAME not in index_names:
-        logger.info(f"Creating Pinecone index: {PINECONE_INDEX_NAME}")
-        pc.create_index(
-            name=PINECONE_INDEX_NAME,
-            dimension=EMBEDDING_DIMENSIONS,
-            metric='cosine',
-        )
-        logger.info("Pinecone index created")
-    else:
-        logger.info("Pinecone index already exists")
+    if not text:
+        return text.strip()
 
-    pinecone_index = pc.Index(PINECONE_INDEX_NAME)
-    return pinecone_index
+    marker = "</think>"
+    idx = text.rfind(marker)
+
+    # If the marker is missing, fall back to full text (should be rare).
+    after = text if idx == -1 else text[idx + len(marker):]
+
+    cleaned = after.strip()
+
+    # Remove ```json or generic ``` fences if present.
+    if cleaned.startswith("```json"):
+        cleaned = cleaned[len("```json"):].strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned[3:].strip()
+    if cleaned.endswith("```"):
+        cleaned = cleaned[:-3].strip()
+
+    return cleaned
 
 def search_events_with_perplexity():
     """Query Perplexity API to identify significant global events from today"""
@@ -90,13 +94,13 @@ def search_events_with_perplexity():
     }
     
     data = {
-        "model": "sonar-reasoning",
+        "model": "sonar-reasoning-pro",
         "messages": [
             {
                 "role": "system",
                 "content": (
                     "You are a precise research assistant specialised in real-time global news extraction. "
-                    "Respond ONLY in English and strictly follow the user instructions. Output EXACTLY the JSON that matches the provided schema – no markdown fences, no commentary."
+                    "Respond ONLY in English and strictly follow the user instructions. Output EXACTLY the JSON that matches the provided schema – no markdown fences, no commentary, no <think> sections."
                 )
             },
             {
@@ -154,11 +158,8 @@ def search_events_with_perplexity():
     response_text = response.json()['choices'][0]['message']['content']
     logger.info(f"Response from Perplexity: {response_text[:100]}...")  # Log beginning of response
     
-    # Handle <think> tag sections if present
-    think_match = re.search(r'<think>(.*?)</think>(.*)', response_text, re.DOTALL)
-    if think_match:
-        # Extract the content after </think>
-        response_text = think_match.group(2).strip()
+    # Remove chain-of-thought sections while keeping the answer intact
+    response_text = _strip_think_blocks(response_text)
     
     # Extract JSON from various possible formats
     json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
@@ -217,6 +218,7 @@ def check_duplicate_in_pinecone(pinecone_index, embedding, metadata):
     logger.info(f"Checking for duplicates for: {metadata['title']}")
     
     query_response = pinecone_index.query(
+        namespace=OVERVIEW_NAMESPACE,
         vector=embedding,
         top_k=5,
         include_metadata=True
@@ -241,14 +243,14 @@ def research_event_details(event):
     }
     
     data = {
-        "model": "sonar-reasoning-pro",
+        "model": "sonar-deep-research",
         "messages": [
             {
                 "role": "system",
                 "content": (
                     "You are an expert investigative journalist who produces comprehensive, in-depth analyses of current events. "
                     "Your analyses are thorough, well-researched, and include historical context, current developments, and future implications. "
-                    "Respond ONLY in English and deliver factual content with professional tone. Structure your response using clear Markdown Formatting"
+                    "Respond ONLY in English and deliver factual content with professional tone."
                 )
             },
             {
@@ -263,7 +265,6 @@ def research_event_details(event):
                 )
             }
         ],
-        "search_recency_filter": "day",
         "web_search_options": {"search_context_size": "high"}
     }
     
@@ -284,10 +285,8 @@ def research_event_details(event):
     response_text = response_json['choices'][0]['message']['content']
     logger.info(f"Response from Perplexity (event research): {response_text[:100]}...")
     
-    # Remove <think> block if present
-    think_match = re.search(r'<think>(.*?)</think>(.*)', response_text, re.DOTALL | re.IGNORECASE)
-    if think_match:
-        response_text = think_match.group(2).strip()
+    # Remove chain-of-thought sections while keeping the answer intact
+    response_text = _strip_think_blocks(response_text)
 
     # Remove citation markers like [1], [2] while preserving markdown formatting
     cleaned_content = re.sub(r'\[\d+\]', '', response_text).strip()
@@ -304,27 +303,63 @@ def research_event_details(event):
     logger.info(f"Successfully researched details for event: {event['title']}")
     return event
 
-def upsert_to_pinecone(pinecone_index, event, embedding):
-    """Store event vector in Pinecone for semantic search and deduplication"""
-    logger.info(f"Upserting event to Pinecone: {event['title']}")
-    
-    # Create deterministic ID from title hash
+def _chunk_text(text: str, max_tokens: int = 300):
+    """Simple word-based chunker (≈ tokens) to split long content into chunks."""
+    if not text:
+        return []
+    words = text.split()
+    for i in range(0, len(words), max_tokens):
+        yield ' '.join(words[i:i + max_tokens])
+
+def upsert_to_pinecone(pinecone_index, event, overview_embedding):
+    """Upsert overview vector (dedup) and chunked content vectors into their respective namespaces."""
+    logger.info(f"Upserting event (overview + chunks) to Pinecone: {event['title']}")
+
+    # Deterministic ID derived from title hash (stable across runs)
     event_id = f"event_{hash(event['title'])}"
-    
-    # Store essential metadata for search results
-    metadata = {
+
+    # 1) Upsert overview vector (title + summary) ---------------------------------
+    overview_metadata = {
+        'event_id': event_id,
         'title': event['title'],
-        'summary': event['summary']
+        'summary': event['summary'],
     }
-    
-    # Store vector and metadata
+
     pinecone_index.upsert(
+        namespace=OVERVIEW_NAMESPACE,
         vectors=[
-            (event_id, embedding, metadata)
+            (event_id, overview_embedding, overview_metadata)
         ]
     )
-    
-    logger.info(f"Successfully upserted event to Pinecone: {event['title']}")
+
+    # 2) Upsert chunked content vectors ------------------------------------------
+    content = event.get('content', '')
+    if not content:
+        logger.warning(f"No content found for event {event['title']} – skipping chunk upsert")
+        return
+
+    chunks = list(_chunk_text(content))
+    vectors_to_upsert = []
+    for idx, chunk in enumerate(chunks):
+        chunk_embedding = generate_embedding(chunk)
+        chunk_id = f"{event_id}_chunk_{idx}"
+        chunk_metadata = {
+            'event_id': event_id,
+            'chunk_index': idx,
+            'title': event['title'],
+            'sources': event.get('sources', []),
+            'text': chunk  # Store the actual chunk text for downstream retrieval
+        }
+        vectors_to_upsert.append((chunk_id, chunk_embedding, chunk_metadata))
+
+    pinecone_index.upsert(
+        namespace=CONTENT_NAMESPACE,
+        vectors=vectors_to_upsert
+    )
+
+    logger.info(
+        f"Successfully upserted {len(vectors_to_upsert)} content chunks and overview vector for event: {event['title']}"
+    )
 
 def store_to_mongodb(event):
     """Persist full event details to MongoDB document database"""
@@ -347,8 +382,8 @@ def main():
         events = search_events_with_perplexity()
         total_events_found = len(events)
         
-        # Initialize vector database
-        pinecone_index = create_pinecone_index_if_not_exists()
+        # Open an existing Pinecone index (must be pre-created via dashboard)
+        pinecone_index = pc.Index(PINECONE_INDEX_NAME)
         
         # Process each event for storage
         unique_events = []

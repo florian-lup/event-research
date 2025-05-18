@@ -7,8 +7,10 @@ from timeline_researcher import (
     research_event_details,
     upsert_to_pinecone,
     store_to_mongodb,
-    create_pinecone_index_if_not_exists
 )
+
+from pinecone import Pinecone
+import os
 
 # Configure logging
 logging.basicConfig(
@@ -48,14 +50,15 @@ def test_embedding_generation(events):
         return None
 
 def test_pinecone_index():
-    """Test Pinecone index creation or retrieval"""
-    logger.info("Testing create_pinecone_index_if_not_exists function...")
+    """Test opening existing Pinecone index"""
+    logger.info("Testing Pinecone index access...")
     try:
-        index = create_pinecone_index_if_not_exists()
-        logger.info(f"SUCCESS: Got Pinecone index")
+        pc = Pinecone(api_key=os.getenv('PINECONE_API_KEY'))
+        index = pc.Index('events')
+        logger.info("SUCCESS: Connected to existing Pinecone index")
         return index
     except Exception as e:
-        logger.error(f"FAILED: Error creating/getting Pinecone index: {str(e)}")
+        logger.error(f"FAILED: Error accessing Pinecone index: {str(e)}")
         return None
 
 def test_duplicate_check(index, embedding, event):
