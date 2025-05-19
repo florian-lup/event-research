@@ -7,7 +7,7 @@ A tool that automatically researches current global events, deduplicates them, a
 - Searches for top 5 global events of the day using Perplexity API
 - Generates embeddings for each event using OpenAI
 - Deduplicates events using Pinecone similarity search
-- Researches additional details for each unique event
+- Researches additional details for each unique event with gpt and tavily
 - Stores events in Pinecone for vector search and MongoDB for persistent storage
 
 ## Requirements
@@ -42,23 +42,32 @@ MONGODB_URI=your_mongodb_uri
 
 ## Usage
 
-Run the script to start the event research workflow:
+Run the pipeline via the package's entry-point:
 
 ```bash
-python timeline_researcher.py
+python -m event_research
 ```
 
-The script will:
-1. Search for top global events using Perplexity API
-2. Generate embeddings and check for duplicates in Pinecone
-3. Research additional details for unique events
-4. Store events in both Pinecone and MongoDB
+The command will:
+1. Discover top global events using the Perplexity API.
+2. Embed each headline+summary and deduplicate them with Pinecone.
+3. Enrich unique events with detailed analysis and sources.
+4. Persist vectors to Pinecone and full documents to MongoDB.
 
-## Project Structure
+## Project Structure (simplified)
 
-- `timeline_researcher.py`: Main script that implements the workflow
-- `requirements.txt`: Python dependencies
-- `.env`: Configuration file for API keys (not included in repository)
+- `event_research/`
+  - `__init__.py` – exposes `run()` helper.
+  - `__main__.py` – enables `python -m event_research`.
+  - `pipeline.py` – <80-line orchestration of the workflow.
+  - `config.py`, `logging_config.py` – configuration & logging.
+  - `clients/` – singleton wrappers for OpenAI, Pinecone, MongoDB, Tavily, Perplexity.
+  - `services/` – discovery, embeddings, deduplication, enrichment, storage.
+  - `models.py` – dataclass `Event`.
+  - `utils/` – shared helpers (e.g. text cleaning).
+- `tests/` – unit tests for utilities and models.
+- `requirements.txt` – pinned dependencies.
+- `.env.example` – template for environment variables (real `.env` ignored).
 
 ## Notes
 

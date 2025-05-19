@@ -8,7 +8,12 @@ import re
 from typing import List, Dict, Any
 
 from ..clients.perplexity_client import get_perplexity_session
-from ..config import CURRENT_DATE, PERPLEXITY_API_KEY
+from ..config import (
+    CURRENT_DATE,
+    PERPLEXITY_API_KEY,
+    PERPLEXITY_MODEL,
+    PERPLEXITY_CONTEXT_SIZE,
+)
 from ..utils.text_cleaning import strip_think_blocks
 
 logger = logging.getLogger(__name__)
@@ -42,7 +47,7 @@ def search_events_with_perplexity() -> List[Dict[str, Any]]:
     }
 
     data = {
-        "model": "sonar-reasoning",
+        "model": PERPLEXITY_MODEL,
         "messages": [
             {
                 "role": "system",
@@ -70,7 +75,7 @@ def search_events_with_perplexity() -> List[Dict[str, Any]]:
         ],
         "search_after_date_filter": CURRENT_DATE,
         "search_before_date_filter": CURRENT_DATE,
-        "web_search_options": {"search_context_size": "medium"},
+        "web_search_options": {"search_context_size": PERPLEXITY_CONTEXT_SIZE},
         "response_format": {
             "type": "json_schema",
             "json_schema": {

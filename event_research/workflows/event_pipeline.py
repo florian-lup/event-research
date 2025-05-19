@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import logging
 
-from .logging_config import logging as _  # noqa: F401  # ensure config applied early
-from .clients.pinecone_client import get_index as get_pinecone_index
-from .services.discovery import search_events_with_perplexity
-from .services.embeddings import generate_embedding
-from .services.deduplication import check_duplicate_in_pinecone
-from .services.enrichment import research_event_details
-from .services.storage import upsert_to_pinecone, store_to_mongodb
+from ..logging_config import logging as _  # noqa: F401  # ensure config applied early
+from ..clients.pinecone_client import get_index as get_pinecone_index
+from ..services.discovery import search_events_with_perplexity
+from ..services.embeddings import generate_embedding
+from ..services.deduplication import check_duplicate_in_pinecone
+from ..services.enrichment import research_event_details
+from ..services.storage import upsert_to_pinecone, store_to_mongodb
 
 logger = logging.getLogger(__name__)
 
@@ -62,4 +62,4 @@ def _log_stats(total_events: int, duplicates: int, stored: int) -> None:
     logger.info("Events stored in database: %d", stored)
     logger.info("=====================================")
 
-__all__ = ["run"] 
+__all__ = ["run"]

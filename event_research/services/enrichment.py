@@ -7,7 +7,15 @@ from typing import Dict, Any, List
 
 from ..clients.openai_client import get_openai
 from ..clients.tavily_client import get_tavily_client
-from ..config import CURRENT_DATE
+from ..config import (
+    CURRENT_DATE,
+    OPENAI_SEARCH_MODEL,
+    OPENAI_ARTICLE_MODEL,
+    TAVILY_SEARCH_DEPTH,
+    TAVILY_MAX_RESULTS,
+    TAVILY_DAYS,
+    TAVILY_TIME_RANGE,
+)
 from ..utils.text_cleaning import sanitize_llm_text
 
 logger = logging.getLogger(__name__)
@@ -19,7 +27,7 @@ def _generate_search_query(title: str) -> str:
     """Ask GPT-4o-mini for a concise web-search query."""
     try:
         resp = _openai.chat.completions.create(
-            model="gpt-4o-mini",
+            model=OPENAI_SEARCH_MODEL,
             messages=[
                 {
                     "role": "system",
@@ -52,10 +60,10 @@ def research_event_details(event: Dict[str, Any]) -> Dict[str, Any]:
     tavily_resp = _tavily.search(
         query=search_query,
         topic="news",
-        search_depth="advanced",
-        max_results=10,
-        days=1,
-        time_range="day",
+        search_depth=TAVILY_SEARCH_DEPTH,
+        max_results=TAVILY_MAX_RESULTS,
+        days=TAVILY_DAYS,
+        time_range=TAVILY_TIME_RANGE,
         include_answer=False,
         include_raw_content=False,
     )
@@ -88,7 +96,7 @@ def research_event_details(event: Dict[str, Any]) -> Dict[str, Any]:
     aggregated_text = "\n\n".join(content_snippets)[:8000]  # truncate defensively
     try:
         article_resp = _openai.chat.completions.create(
-            model="gpt-4o",
+            model=OPENAI_ARTICLE_MODEL,
             messages=[
                 {
                     "role": "system",
