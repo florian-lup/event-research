@@ -84,6 +84,53 @@ def _strip_think_blocks(text: str) -> str:
 
     return cleaned
 
+def _sanitize_llm_text(text: str, *, remove_citations: bool = True, remove_markdown: bool = False) -> str:
+    """Clean raw LLM output so downstream parsing is robust.
+
+    Steps performed:
+    1. Strip chain-of-thought blocks and surrounding ``` fences via ``_strip_think_blocks``.
+    2. Optionally remove inline citation markers:
+       • Numeric references like ``[1]`` or ``[23]``.
+       • Source tags like ``[Reuters]`` or ``[BBC]``.
+    3. Optionally remove basic markdown syntax (headings, lists, emphasis, horizontal rules)
+
+    Parameters
+    ----------
+    text : str
+        Raw text from the LLM.
+    remove_citations : bool, default True
+        If ``True``, both numeric and textual inline citations are removed.
+    remove_markdown : bool, default False
+        If ``True``, basic markdown syntax (headings, lists, emphasis, horizontal rules) is stripped.
+
+    Returns
+    -------
+    str
+        Sanitised text ready for JSON parsing or storage.
+    """
+
+    cleaned = _strip_think_blocks(text)
+
+    if remove_citations:
+        # Remove numeric citations like [1], [12]
+        cleaned = re.sub(r"\[\d+\]", "", cleaned)
+        # Remove textual citations like [Reuters], [NYT]
+        cleaned = re.sub(r"\[[A-Za-z][^\]]+\]", "", cleaned)
+
+    if remove_markdown:
+        # Strip heading markers (e.g., `# Heading`, `## Heading`)
+        cleaned = re.sub(r"^#{1,6}\s*", "", cleaned, flags=re.MULTILINE)
+        # Strip unordered list bullets (-, *, +)
+        cleaned = re.sub(r"^\s*[-*+]\s+", "", cleaned, flags=re.MULTILINE)
+        # Strip numbered list markers (1. 2. etc.)
+        cleaned = re.sub(r"^\s*\d+\.\s+", "", cleaned, flags=re.MULTILINE)
+        # Remove horizontal rules (--- or *** lines)
+        cleaned = re.sub(r"^(?:-{3,}|\*{3,})$", "", cleaned, flags=re.MULTILINE)
+        # Remove emphasis markers (**bold**, *italic*, __bold__, _italic_)
+        cleaned = re.sub(r"(\*\*|__|\*|_)", "", cleaned)
+
+    return cleaned.strip()
+
 def search_events_with_perplexity():
     """Query Perplexity API to identify significant global events from today"""
     logger.info("Searching for top 5 global events with Perplexity API...")
@@ -100,7 +147,7 @@ def search_events_with_perplexity():
                 "role": "system",
                 "content": (
                     "You are a precise research assistant specialised in real-time global news extraction. "
-                    "Respond ONLY in English and strictly follow the user instructions. Output EXACTLY the JSON that matches the provided schema – no markdown fences, no commentary, no <think> sections."
+                    "Strictly follow the user instructions and output EXACTLY the JSON that matches the provided schema, no markdown, no fences, no commentary, no citations."
                 )
             },
             {
@@ -113,7 +160,6 @@ def search_events_with_perplexity():
                     "3) Return an array named 'events', where each item contains: \n"
                     "   • title – concise, ≤90 characters, written as a compelling headline.\n"
                     "   • summary – 400-600 characters explaining what happened, why it matters, and key details.\n"
-                    "4) Use neutral, factual language." 
                 )
             }
         ],
@@ -158,7 +204,7 @@ def search_events_with_perplexity():
     response_text = response.json()['choices'][0]['message']['content']
     logger.info(f"Response from Perplexity: {response_text[:100]}...")  # Log beginning of response
     
-    # Remove chain-of-thought sections while keeping the answer intact
+    # Strip the <think> reasoning section and any ```json fences but leave JSON content untouched
     response_text = _strip_think_blocks(response_text)
     
     # Extract JSON from various possible formats
@@ -177,7 +223,7 @@ def search_events_with_perplexity():
         events = events_data.get('events', [])
     except json.JSONDecodeError as e:
         logger.error(f"JSON parsing error: {e}. Text: {json_text}")
-        raise Exception(f"Failed to parse JSON: {e}")
+        raise Exception(f"Failed to parse JSON returned by Perplexity: {e}")
     
     # Construct complete event objects with placeholder fields
     complete_events = []
@@ -250,18 +296,12 @@ def research_event_details(event):
                 "content": (
                     "You are an expert investigative journalist who produces comprehensive, in-depth analyses of current events. "
                     "Your analyses are thorough, well-researched, and include historical context, current developments, and future implications. "
-                    "Respond ONLY in English and deliver factual content with professional tone."
                 )
             },
             {
                 "role": "user",
                 "content": (
-                    f"Provide a comprehensive, in-depth analysis of this significant global event: '{event['title']}'.\n"
-                    "Requirements:\n"
-                    "1) Deliver a thorough analysis including historical context, key players, current developments, global implications, and potential future outcomes.\n"
-                    "2) Include relevant statistics, expert opinions, and critical perspectives where available.\n"
-                    "3) Write in a formal, analytical style appropriate for a serious news publication.\n"
-                    "4) Use only verifiable facts from reputable sources."
+                    f"Provide a comprehensive, in-depth analysis of this significant global event: '{event['title']}'."
                 )
             }
         ],
@@ -285,12 +325,8 @@ def research_event_details(event):
     response_text = response_json['choices'][0]['message']['content']
     logger.info(f"Response from Perplexity (event research): {response_text[:100]}...")
     
-    # Remove chain-of-thought sections while keeping the answer intact
-    response_text = _strip_think_blocks(response_text)
-
-    # Remove citation markers like [1], [2] while preserving markdown formatting
-    cleaned_content = re.sub(r'\[\d+\]', '', response_text).strip()
-    content = cleaned_content
+    # Sanitize content (strip chain-of-thought, citations, fences)
+    content = _sanitize_llm_text(response_text, remove_citations=True, remove_markdown=False)
     
     # Extract citation metadata
     sources = response_json.get('citations', [])
