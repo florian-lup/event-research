@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import logging
+import os
 from timeline_researcher import (
     search_events_with_perplexity,
     generate_embedding,
@@ -10,7 +11,6 @@ from timeline_researcher import (
 )
 
 from pinecone import Pinecone
-import os
 
 # Configure logging
 logging.basicConfig(
@@ -79,15 +79,21 @@ def test_duplicate_check(index, embedding, event):
 
 def test_event_research(event):
     """Test detailed event information retrieval"""
-    logger.info("Testing research_event_details function...")
+    logger.info("Testing research_event_details function (OpenAI + Tavily)...")
+
+    # Ensure Tavily API key is configured
+    if not os.getenv("TAVILY_API_KEY"):
+        logger.error("TAVILY_API_KEY is not set — skipping event research test")
+        return None
+
     if not event:
         logger.warning("No event to research, skipping test")
         return None
-    
+
     try:
         detailed_event = research_event_details(event)
-        logger.info(f"SUCCESS: Researched event details")
-        logger.info(f"Content length: {len(detailed_event['content'])}")
+        logger.info("SUCCESS: Researched event details")
+        logger.info(f"Report length: {len(detailed_event['report'])}")
         logger.info(f"Sources count: {len(detailed_event['sources'])}")
         return detailed_event
     except Exception as e:

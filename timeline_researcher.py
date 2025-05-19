@@ -9,8 +9,9 @@ from dotenv import load_dotenv
 import requests
 from pinecone import Pinecone
 from pymongo import MongoClient
+from tavily import TavilyClient
 
-# Set up logger
+# Configure logging with StreamHandler
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
@@ -20,17 +21,18 @@ logging.basicConfig(
     ]
 )
 
-# Load environment variables
+# Load environment variables from .env file
 load_dotenv()
 
-# API configuration
+# API credentials from environment variables
 PERPLEXITY_API_KEY = os.getenv('PERPLEXITY_API_KEY')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 PINECONE_API_KEY = os.getenv('PINECONE_API_KEY')
 PINECONE_ENVIRONMENT = os.getenv('PINECONE_ENVIRONMENT')
 MONGODB_URI = os.getenv('MONGODB_URI')
+TAVILY_API_KEY = os.getenv('TAVILY_API_KEY')
 
-# Initialize API clients
+# Initialize service clients
 logger.info("Initializing API clients...")
 pc = Pinecone(api_key=PINECONE_API_KEY)
 logger.info("Initialized Pinecone client")
@@ -42,39 +44,44 @@ from openai import OpenAI as _OpenAIClient
 openai_client = _OpenAIClient(api_key=OPENAI_API_KEY)
 logger.info("Initialized OpenAI client")
 
-# Shared HTTP session for Perplexity to optimize connection reuse
+# Initialize Tavily client (singleton)
+tavily_client = TavilyClient(api_key=TAVILY_API_KEY)
+logger.info("Initialized Tavily client")
+
+# Shared HTTP session for Perplexity API requests
 perplexity_session = requests.Session()
 
-# Shared Pinecone index (initialized lazily)
+# Lazy-initialized Pinecone index
 pinecone_index = None  # type: ignore
 
-# Constants
+# Configuration constants
 PINECONE_INDEX_NAME = 'events'
-# Embedding configuration (using a larger model for improved semantic quality)
-EMBEDDING_MODEL = 'text-embedding-3-large'
+EMBEDDING_MODEL = 'text-embedding-3-large'  # 3072-dim embeddings for improved semantic quality
 EMBEDDING_DIMENSIONS = 3072
 SIMILARITY_THRESHOLD = 0.8
 CURRENT_DATE = datetime.now().strftime("%m/%d/%Y")
 
-# Pinecone namespace conventions
-OVERVIEW_NAMESPACE = 'overview'  # One vector per event (title + summary)
-CONTENT_NAMESPACE = 'content'    # Many vectors per event (chunked content)
+# Pinecone namespace organization
+DEDUPLICATION_NAMESPACE = 'deduplication'  # One vector per event (title + summary)
+REPORT_NAMESPACE = 'report'    # Many vectors per event (chunked report)
 
 def _strip_think_blocks(text: str) -> str:
-    """Return the part of the reply that comes *after* the closing </think> tag."""
-
+    """Extract content after the closing </think> tag from LLM response.
+    
+    Handles missing tags and removes JSON code fences if present.
+    """
     if not text:
         return text.strip()
 
     marker = "</think>"
     idx = text.rfind(marker)
 
-    # If the marker is missing, fall back to full text (should be rare).
+    # Fallback to full text if marker is missing
     after = text if idx == -1 else text[idx + len(marker):]
 
     cleaned = after.strip()
 
-    # Remove ```json or generic ``` fences if present.
+    # Remove JSON code fences if present
     if cleaned.startswith("```json"):
         cleaned = cleaned[len("```json"):].strip()
     if cleaned.startswith("```"):
@@ -85,40 +92,32 @@ def _strip_think_blocks(text: str) -> str:
     return cleaned
 
 def _sanitize_llm_text(text: str, *, remove_citations: bool = True, remove_markdown: bool = False) -> str:
-    """Clean raw LLM output so downstream parsing is robust.
-
-    Steps performed:
-    1. Strip chain-of-thought blocks and surrounding ``` fences via ``_strip_think_blocks``.
-    2. Optionally remove inline citation markers:
-       • Numeric references like ``[1]`` or ``[23]``.
-       • Source tags like ``[Reuters]`` or ``[BBC]``.
-    3. Optionally remove basic markdown syntax (headings, lists, emphasis, horizontal rules)
+    """Standardize LLM output for downstream parsing.
 
     Parameters
     ----------
     text : str
-        Raw text from the LLM.
+        Raw LLM response
     remove_citations : bool, default True
-        If ``True``, both numeric and textual inline citations are removed.
+        Remove numeric ([1]) and textual ([Reuters]) citations
     remove_markdown : bool, default False
-        If ``True``, basic markdown syntax (headings, lists, emphasis, horizontal rules) is stripped.
+        Strip headings, lists, emphasis, and horizontal rules
 
     Returns
     -------
     str
-        Sanitised text ready for JSON parsing or storage.
+        Cleaned text for parsing or storage
     """
-
     cleaned = _strip_think_blocks(text)
 
     if remove_citations:
-        # Remove numeric citations like [1], [12]
+        # Remove numeric citations ([1], [12])
         cleaned = re.sub(r"\[\d+\]", "", cleaned)
-        # Remove textual citations like [Reuters], [NYT]
+        # Remove textual citations ([Reuters], [NYT])
         cleaned = re.sub(r"\[[A-Za-z][^\]]+\]", "", cleaned)
 
     if remove_markdown:
-        # Strip heading markers (e.g., `# Heading`, `## Heading`)
+        # Strip headings (# Heading, ## Heading)
         cleaned = re.sub(r"^#{1,6}\s*", "", cleaned, flags=re.MULTILINE)
         # Strip unordered list bullets (-, *, +)
         cleaned = re.sub(r"^\s*[-*+]\s+", "", cleaned, flags=re.MULTILINE)
@@ -126,13 +125,17 @@ def _sanitize_llm_text(text: str, *, remove_citations: bool = True, remove_markd
         cleaned = re.sub(r"^\s*\d+\.\s+", "", cleaned, flags=re.MULTILINE)
         # Remove horizontal rules (--- or *** lines)
         cleaned = re.sub(r"^(?:-{3,}|\*{3,})$", "", cleaned, flags=re.MULTILINE)
-        # Remove emphasis markers (**bold**, *italic*, __bold__, _italic_)
+        # Remove emphasis (**bold**, *italic*, __bold__, _italic_)
         cleaned = re.sub(r"(\*\*|__|\*|_)", "", cleaned)
 
     return cleaned.strip()
 
 def search_events_with_perplexity():
-    """Query Perplexity API to identify significant global events from today"""
+    """Query Perplexity API for current significant global events.
+    
+    Returns a list of event objects containing title and summary fields.
+    Each event is enriched with placeholders for content and sources.
+    """
     logger.info("Searching for top 5 global events with Perplexity API...")
     
     headers = {
@@ -141,7 +144,7 @@ def search_events_with_perplexity():
     }
     
     data = {
-        "model": "sonar-reasoning-pro",
+        "model": "sonar-reasoning",
         "messages": [
             {
                 "role": "system",
@@ -200,18 +203,18 @@ def search_events_with_perplexity():
         logger.error(f"Error from Perplexity API: {response.status_code} - {response.text}")
         raise Exception(f"Perplexity API error: {response.status_code}")
     
-    # Extract JSON from the response
+    # Extract JSON from response
     response_text = response.json()['choices'][0]['message']['content']
-    logger.info(f"Response from Perplexity: {response_text[:100]}...")  # Log beginning of response
+    logger.info(f"Response from Perplexity: {response_text[:100]}...")
     
-    # Strip the <think> reasoning section and any ```json fences but leave JSON content untouched
+    # Clean response and extract JSON
     response_text = _strip_think_blocks(response_text)
     
-    # Extract JSON from various possible formats
+    # Extract JSON from possible formats (with or without code fences)
     json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
     
     if not json_match:
-        # Fallback to find JSON without markdown code blocks
+        # Fallback to generic JSON pattern
         json_match = re.search(r'(\{.*\})', response_text, re.DOTALL)
         if not json_match:
             logger.error(f"Could not parse JSON from Perplexity response: {response_text}")
@@ -225,17 +228,17 @@ def search_events_with_perplexity():
         logger.error(f"JSON parsing error: {e}. Text: {json_text}")
         raise Exception(f"Failed to parse JSON returned by Perplexity: {e}")
     
-    # Construct complete event objects with placeholder fields
+    # Build complete event objects with metadata fields
     complete_events = []
     for event in events:
-        # Clean citation markers from summary
+        # Remove citation markers from summary
         cleaned_summary = re.sub(r'\[\d+\]', '', event['summary'])
         
         complete_events.append({
             'date': datetime.now().isoformat(),
             'title': event['title'],
             'summary': cleaned_summary,
-            'content': '',
+            'report': '',
             'sources': []
         })
     
@@ -243,7 +246,10 @@ def search_events_with_perplexity():
     return complete_events
 
 def generate_embedding(text):
-    """Convert text to vector representation using OpenAI embeddings API"""
+    """Generate vector embedding using OpenAI API.
+    
+    Converts text to EMBEDDING_DIMENSIONS-dimensional vector using EMBEDDING_MODEL.
+    """
     logger.info(f"Generating embedding for text: {text[:50]}...")
 
     try:
@@ -260,17 +266,20 @@ def generate_embedding(text):
         raise
 
 def check_duplicate_in_pinecone(pinecone_index, embedding, metadata):
-    """Detect semantic duplicates by checking vector similarity against threshold"""
+    """Detect semantic duplicates using vector similarity.
+    
+    Returns True if any existing vector exceeds SIMILARITY_THRESHOLD.
+    """
     logger.info(f"Checking for duplicates for: {metadata['title']}")
     
     query_response = pinecone_index.query(
-        namespace=OVERVIEW_NAMESPACE,
+        namespace=DEDUPLICATION_NAMESPACE,
         vector=embedding,
         top_k=5,
         include_metadata=True
     )
     
-    # Compare similarity scores against threshold
+    # Check similarity scores against threshold
     for match in query_response.matches:
         if match.score >= SIMILARITY_THRESHOLD:
             logger.info(f"Found duplicate: {metadata['title']} - Similarity: {match.score}")
@@ -280,67 +289,137 @@ def check_duplicate_in_pinecone(pinecone_index, embedding, metadata):
     return False
 
 def research_event_details(event):
-    """Enrich event with comprehensive analysis and source citations"""
-    logger.info(f"Researching details for event: {event['title']}")
+    """Enrich event with detailed content and sources.
     
-    headers = {
-        "Authorization": f"Bearer {PERPLEXITY_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    
-    data = {
-        "model": "sonar-deep-research",
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are an expert investigative journalist who produces comprehensive, in-depth analyses of current events. "
-                    "Your analyses are thorough, well-researched, and include historical context, current developments, and future implications. "
-                )
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Provide a comprehensive, in-depth analysis of this significant global event: '{event['title']}'."
-                )
-            }
-        ],
-        "web_search_options": {"search_context_size": "high"}
-    }
-    
-    response = perplexity_session.post(
-        "https://api.perplexity.ai/chat/completions",
-        headers=headers,
-        json=data
+    1. Generates optimized search query via GPT-4o-mini
+    2. Retrieves relevant news via Tavily
+    3. Creates comprehensive analysis via GPT-4o
+    4. Adds content and source URLs to event object
+    """
+    logger.info(f"Researching details for event via Tavily: {event['title']}")
+
+    if not TAVILY_API_KEY:
+        raise EnvironmentError("TAVILY_API_KEY is not set in environment variables")
+
+    # 1) Generate optimal search query
+    try:
+        query_resp = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an expert news researcher. "
+                        f"Given today's {CURRENT_DATE} event headline, output a concise web search query (≤120 characters) "
+                        "that will retrieve high-quality, up-to-date coverage about the event. "
+                        "Only return the query text—no commentary."
+                    ),
+                },
+                {"role": "user", "content": event["title"]},
+            ],
+            temperature=0.2,
+            max_tokens=60,
+        )
+
+        search_query = query_resp.choices[0].message.content.strip().replace("\n", " ")
+    except Exception as e:
+        # Fallback to title if LLM fails
+        logger.warning(f"GPT-4o query generation failed: {e}. Falling back to title.")
+        search_query = event["title"]
+
+    logger.info(f"Tavily search query: {search_query}")
+
+    # 2) Retrieve news coverage via Tavily
+    try:
+        tavily_response = tavily_client.search(
+            query=search_query,
+            topic="news",
+            search_depth="advanced",
+            max_results=10,
+            days=1,
+            time_range="day",
+            include_answer=False,
+            include_raw_content=False,
+        )
+        tavily_results = tavily_response.get("results", [])
+    except Exception as e:
+        logger.error(f"Tavily SDK search failed: {e}")
+        raise
+
+    if not tavily_results:
+        logger.warning("Tavily returned no results; skipping detailed enrichment.")
+        return event
+
+    # Extract sources and content snippets
+    sources: list[str] = []
+    content_snippets: list[str] = []
+
+    for res in tavily_results:
+        url = res.get("url")
+        snippet = res.get("content", "")
+
+        if url:
+            sources.append(url)
+        if snippet:
+            content_snippets.append(snippet)
+
+    # Deduplicate URLs while preserving order
+    seen_urls = set()
+    unique_sources = []
+    for url in sources:
+        if url not in seen_urls:
+            unique_sources.append(url)
+            seen_urls.add(url)
+
+    # 3) Generate comprehensive article with GPT-4o
+    aggregated_text = "\n\n".join(content_snippets)[:8000]  # truncate defensively
+
+    try:
+        article_resp = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an award-winning investigative journalist. "
+                        "Write a comprehensive, well-structured analysis of the event below, "
+                        "drawing solely from the provided source excerpts. "
+                        "Include historical context, current developments, and potential future implications."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Event title: {event['title']}\n\n" +
+                        "Source excerpts:\n" + aggregated_text
+                    ),
+                },
+            ],
+            temperature=0.3,
+            max_tokens=7000,
+        )
+
+        raw_article = article_resp.choices[0].message.content
+        cleaned_article = _sanitize_llm_text(raw_article, remove_citations=True, remove_markdown=False)
+    except Exception as e:
+        logger.error(f"GPT-4o article generation failed: {e}. Using concatenated snippets.")
+        cleaned_article = aggregated_text
+
+    # 4) Update event with report and sources
+    event["report"] = cleaned_article.strip()
+    event["sources"] = unique_sources
+
+    logger.info(
+        f"Successfully enriched event '{event['title']}' with {len(unique_sources)} sources and detailed analysis."
     )
-    
-    if response.status_code != 200:
-        logger.error(f"Error from Perplexity API: {response.status_code} - {response.text}")
-        raise Exception(f"Perplexity API error: {response.status_code}")
-    
-    # Parse the full JSON response
-    response_json = response.json()
-    
-    # Extract content from the response
-    response_text = response_json['choices'][0]['message']['content']
-    logger.info(f"Response from Perplexity (event research): {response_text[:100]}...")
-    
-    # Sanitize content (strip chain-of-thought, citations, fences)
-    content = _sanitize_llm_text(response_text, remove_citations=True, remove_markdown=False)
-    
-    # Extract citation metadata
-    sources = response_json.get('citations', [])
-    logger.info(f"Found {len(sources)} citations from Perplexity API")
-    
-    # Update event with detailed information
-    event['content'] = content
-    event['sources'] = sources
-    
-    logger.info(f"Successfully researched details for event: {event['title']}")
+
     return event
 
 def _chunk_text(text: str, max_tokens: int = 300):
-    """Simple word-based chunker (≈ tokens) to split long content into chunks."""
+    """Split report text into roughly token-sized chunks for vectorization.
+    
+    Uses simple word-based splitting as token approximation.
+    """
     if not text:
         return []
     words = text.split()
@@ -348,13 +427,17 @@ def _chunk_text(text: str, max_tokens: int = 300):
         yield ' '.join(words[i:i + max_tokens])
 
 def upsert_to_pinecone(pinecone_index, event, overview_embedding):
-    """Upsert overview vector (dedup) and chunked content vectors into their respective namespaces."""
+    """Store event vectors in Pinecone index.
+    
+    1. Stores overview vector (title+summary) in DEDUPLICATION_NAMESPACE
+    2. Chunks and stores report vectors in REPORT_NAMESPACE
+    """
     logger.info(f"Upserting event (overview + chunks) to Pinecone: {event['title']}")
 
-    # Deterministic ID derived from title hash (stable across runs)
+    # Generate stable ID from title hash
     event_id = f"event_{hash(event['title'])}"
 
-    # 1) Upsert overview vector (title + summary) ---------------------------------
+    # 1) Store overview vector
     overview_metadata = {
         'event_id': event_id,
         'title': event['title'],
@@ -362,19 +445,19 @@ def upsert_to_pinecone(pinecone_index, event, overview_embedding):
     }
 
     pinecone_index.upsert(
-        namespace=OVERVIEW_NAMESPACE,
+        namespace=DEDUPLICATION_NAMESPACE,
         vectors=[
             (event_id, overview_embedding, overview_metadata)
         ]
     )
 
-    # 2) Upsert chunked content vectors ------------------------------------------
-    content = event.get('content', '')
-    if not content:
-        logger.warning(f"No content found for event {event['title']} – skipping chunk upsert")
+    # 2) Store report chunk vectors
+    report = event.get('report', '')
+    if not report:
+        logger.warning(f"No report found for event {event['title']} – skipping chunk upsert")
         return
 
-    chunks = list(_chunk_text(content))
+    chunks = list(_chunk_text(report))
     vectors_to_upsert = []
     for idx, chunk in enumerate(chunks):
         chunk_embedding = generate_embedding(chunk)
@@ -384,65 +467,72 @@ def upsert_to_pinecone(pinecone_index, event, overview_embedding):
             'chunk_index': idx,
             'title': event['title'],
             'sources': event.get('sources', []),
-            'text': chunk  # Store the actual chunk text for downstream retrieval
+            'text': chunk  # Store chunk text for retrieval
         }
         vectors_to_upsert.append((chunk_id, chunk_embedding, chunk_metadata))
 
     pinecone_index.upsert(
-        namespace=CONTENT_NAMESPACE,
+        namespace=REPORT_NAMESPACE,
         vectors=vectors_to_upsert
     )
 
     logger.info(
-        f"Successfully upserted {len(vectors_to_upsert)} content chunks and overview vector for event: {event['title']}"
+        f"Successfully upserted {len(vectors_to_upsert)} report chunks and overview vector for event: {event['title']}"
     )
 
 def store_to_mongodb(event):
-    """Persist full event details to MongoDB document database"""
+    """Save complete event document to MongoDB collection."""
     logger.info(f"Storing event to MongoDB: {event['title']}")
     
     db = mongo_client['events']
     collection = db['global']
     
-    # Insert complete event document
+    # Insert event document
     result = collection.insert_one(event)
     
     logger.info(f"Successfully stored event to MongoDB with ID: {result.inserted_id}")
 
 def main():
-    """Orchestrate end-to-end event discovery, deduplication, and storage workflow"""
+    """Execute end-to-end event discovery and storage pipeline.
+    
+    1. Discover events via Perplexity API
+    2. Generate embeddings for deduplication
+    3. Filter out duplicates using vector similarity
+    4. Enrich unique events with detailed content
+    5. Store in vector and document databases
+    """
     logger.info("Starting timeline researcher workflow")
     
     try:
-        # Step 1: Search for recent significant events
+        # 1. Discover recent significant events
         events = search_events_with_perplexity()
         total_events_found = len(events)
         
-        # Open an existing Pinecone index (must be pre-created via dashboard)
+        # Connect to Pinecone index (must exist in Pinecone dashboard)
         pinecone_index = pc.Index(PINECONE_INDEX_NAME)
         
-        # Process each event for storage
+        # Process events for storage
         unique_events = []
         duplicate_count = 0
         for event in events:
-            # Step 2: Generate vector representation
+            # 2. Generate vector representation
             combined_text = f"{event['title']} {event['summary']}"
             embedding = generate_embedding(combined_text)
             
-            # Step 3: Detect semantic duplicates
+            # 3. Detect semantic duplicates
             is_duplicate = check_duplicate_in_pinecone(pinecone_index, embedding, {'title': event['title'], 'summary': event['summary']})
             
             if not is_duplicate:
-                # Step 4: Enrich with detailed analysis
+                # 4. Enrich with detailed analysis
                 detailed_event = research_event_details(event)
                 unique_events.append((detailed_event, embedding))
             else:
                 duplicate_count += 1
             
-            # Early exit if no unique events found
+            # Early exit if all events are duplicates
             if not unique_events:
                 logger.info("All events are duplicates, stopping workflow")
-                # Log statistics before exiting
+                # Log final stats
                 logger.info(f"=== Timeline Researcher Statistics ===")
                 logger.info(f"Total events found: {total_events_found}")
                 logger.info(f"Duplicate events: {duplicate_count}")
@@ -450,10 +540,10 @@ def main():
                 logger.info(f"===================================")
                 return
         
-        # Steps 5 & 6: Persist unique events to databases
+        # 5. Store unique events in databases
         stored_count = 0
         for event, embedding in unique_events:
-            # Store vector representation
+            # Store vector representations
             upsert_to_pinecone(pinecone_index, event, embedding)
             
             # Store complete document
