@@ -6,10 +6,10 @@ import logging
 
 from ..logging_config import logging as _  # noqa: F401  # ensure config applied early
 from ..clients.pinecone_client import get_index as get_pinecone_index
-from ..services.discovery import search_events_with_perplexity
+from ..services.discovery import search_events
 from ..services.embeddings import generate_embedding
-from ..services.deduplication import check_duplicate_in_pinecone
-from ..services.enrichment import research_event_details
+from ..services.deduplication import check_duplicates
+from ..services.research import research_event
 from ..services.storage import upsert_to_pinecone, store_to_mongodb
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ def run() -> None:
     logger.info("Starting timeline researcher workflow")
 
     # 1. Discover events
-    events = search_events_with_perplexity()
+    events = search_events()
     total_events_found = len(events)
 
     # 2. Connect to Pinecone index (must already exist)
@@ -32,10 +32,10 @@ def run() -> None:
         combined_text = f"{event['title']} {event['summary']}"
         embedding = generate_embedding(combined_text)
 
-        if not check_duplicate_in_pinecone(
+        if not check_duplicates(
             pinecone_index, embedding, {"title": event["title"], "summary": event["summary"]}
         ):
-            detailed_event = research_event_details(event)
+            detailed_event = research_event(event)
             unique_events.append((detailed_event, embedding))
         else:
             duplicate_count += 1

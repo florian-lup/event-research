@@ -1,4 +1,4 @@
-"""Event enrichment – detailed report + sources using Tavily and OpenAI."""
+"""Event enrichment – detailed research + sources using Tavily and OpenAI."""
 
 from __future__ import annotations
 
@@ -7,16 +7,19 @@ from typing import Dict, Any, List
 
 from ..clients.openai_client import get_openai
 from ..clients.tavily_client import get_tavily_client
-from ..config import (
-    CURRENT_DATE,
-    OPENAI_SEARCH_MODEL,
-    OPENAI_ARTICLE_MODEL,
-    TAVILY_SEARCH_DEPTH,
-    TAVILY_MAX_RESULTS,
-    TAVILY_DAYS,
-    TAVILY_TIME_RANGE,
-)
+from ..config import CURRENT_DATE
 from ..utils.text_cleaning import sanitize_llm_text
+
+# ---------------------------------------------------------------------------
+# Local OpenAI + Tavily settings (specific to this service)
+# ---------------------------------------------------------------------------
+OPENAI_SEARCH_MODEL: str = "o4-mini"  # short prompt, quick response
+OPENAI_ARTICLE_MODEL: str = "gpt-4.1"      # long-form synthesis
+
+TAVILY_SEARCH_DEPTH: str = "advanced"
+TAVILY_MAX_RESULTS: int = 15
+TAVILY_DAYS: int = 1
+TAVILY_TIME_RANGE: str = "day"
 
 logger = logging.getLogger(__name__)
 _openai = get_openai()
@@ -26,6 +29,7 @@ _tavily = get_tavily_client()
 def _generate_search_query(title: str) -> str:
     """Ask GPT-4o-mini for a concise web-search query."""
     try:
+        logger.info("Requesting search query from %s for event: %s", OPENAI_SEARCH_MODEL, title)
         resp = _openai.chat.completions.create(
             model=OPENAI_SEARCH_MODEL,
             messages=[
@@ -33,28 +37,28 @@ def _generate_search_query(title: str) -> str:
                     "role": "system",
                     "content": (
                         "You are an expert news researcher. Given today's"
-                        f" {CURRENT_DATE} event headline, output a concise web search query (≤120 characters)"
+                        f" {CURRENT_DATE} event headline, output a concise web search query (≤250 characters)"
                         " that will retrieve high-quality, up-to-date coverage about the event."
-                        " Only return the query text—no commentary."
                     ),
                 },
                 {"role": "user", "content": title},
             ],
-            temperature=0.2,
-            max_tokens=60,
         )
-        return resp.choices[0].message.content.strip().replace("\n", " ")
+        query = resp.choices[0].message.content.strip().replace("\n", " ")
+        logger.debug("Raw %s response: %s", OPENAI_SEARCH_MODEL, resp.model_dump_json())
+        return query
     except Exception as exc:  # pragma: no cover – network failure
         logger.warning("GPT-4o query generation failed: %s – falling back to title", exc)
         return title
 
 
-def research_event_details(event: Dict[str, Any]) -> Dict[str, Any]:
-    """Populate `event` with a detailed *report* and *sources* list."""
+def research_event(event: Dict[str, Any]) -> Dict[str, Any]:
+    """Populate `event` with a detailed *research* and *sources* list."""
     logger.info("Researching details for event via Tavily: %s", event["title"])
 
     # 1) Build search query
     search_query = _generate_search_query(event["title"])
+    logger.info("Generated search query for Tavily: %s", search_query)
 
     # 2) Tavily search
     tavily_resp = _tavily.search(
@@ -72,6 +76,8 @@ def research_event_details(event: Dict[str, Any]) -> Dict[str, Any]:
     if not tavily_results:
         logger.warning("Tavily returned no results; skipping detailed enrichment.")
         return event
+    
+    logger.info("Tavily returned %d results for query: %s", len(tavily_results), search_query)
 
     # Extract sources and content snippets
     sources: List[str] = []
@@ -95,6 +101,7 @@ def research_event_details(event: Dict[str, Any]) -> Dict[str, Any]:
     # 3) Generate comprehensive article via GPT-4o
     aggregated_text = "\n\n".join(content_snippets)[:8000]  # truncate defensively
     try:
+        logger.info("Requesting detailed article from %s for event: %s", OPENAI_ARTICLE_MODEL, event['title'])
         article_resp = _openai.chat.completions.create(
             model=OPENAI_ARTICLE_MODEL,
             messages=[
@@ -115,15 +122,16 @@ def research_event_details(event: Dict[str, Any]) -> Dict[str, Any]:
             temperature=0.3,
             max_tokens=7000,
         )
+        logger.debug("Raw %s response: %s", OPENAI_ARTICLE_MODEL, article_resp.model_dump_json())
         raw_article: str = article_resp.choices[0].message.content
         cleaned_article = sanitize_llm_text(raw_article, remove_citations=True, remove_markdown=False)
     except Exception as exc:  # pragma: no cover – network failure
         logger.error("GPT-4o article generation failed: %s – using concatenated snippets", exc)
         cleaned_article = aggregated_text
 
-    event["report"] = cleaned_article.strip()
+    event["research"] = cleaned_article.strip()
     event["sources"] = unique_sources
     logger.info("Enriched event '%s' with %d sources", event["title"], len(unique_sources))
     return event
 
-__all__ = ["research_event_details"] 
+__all__ = ["research_event"] 

@@ -26,42 +26,16 @@ PINECONE_ENVIRONMENT: str | None = os.getenv("PINECONE_ENVIRONMENT")
 MONGODB_URI: str | None = os.getenv("MONGODB_URI")
 
 # ---------------------------------------------------------------------------
-# Perplexity settings
-# ---------------------------------------------------------------------------
-PERPLEXITY_MODEL: str = "sonar-reasoning"
-# accepted values: "low", "medium", "large"
-PERPLEXITY_CONTEXT_SIZE: str = "low"
-
-# ---------------------------------------------------------------------------
-# OpenAI settings
-# ---------------------------------------------------------------------------
-OPENAI_SEARCH_MODEL: str = "gpt-4o-mini"  # short prompt, quick response
-OPENAI_ARTICLE_MODEL: str = "gpt-4o"      # long-form synthesis
-
-# ---------------------------------------------------------------------------
-# Tavily settings
-# ---------------------------------------------------------------------------
-TAVILY_SEARCH_DEPTH: str = "advanced"
-TAVILY_MAX_RESULTS: int = 10
-TAVILY_DAYS: int = 1
-TAVILY_TIME_RANGE: str = "day"
-
-# ---------------------------------------------------------------------------
-# Pinecone settings
+# Cross-cutting service settings
+# (referenced in more than one component)
 # ---------------------------------------------------------------------------
 PINECONE_INDEX_NAME: str = "events"
 DEDUPLICATION_NAMESPACE: str = "deduplication"
-REPORT_NAMESPACE: str = "report"
-
-# ---------------------------------------------------------------------------
-# Embedding settings
-# ---------------------------------------------------------------------------
-EMBEDDING_MODEL: str = "text-embedding-3-large"
-EMBEDDING_DIMENSIONS: int = 3072
-SIMILARITY_THRESHOLD: float = 0.8
+research_NAMESPACE: str = "research"
 
 # ---------------------------------------------------------------------------
 # Miscellaneous
+# Perplexity Date format for date filtering
 # ---------------------------------------------------------------------------
 CURRENT_DATE: str = datetime.now().strftime("%m/%d/%Y")
 
@@ -76,25 +50,10 @@ __all__ = [
     "PINECONE_API_KEY",
     "PINECONE_ENVIRONMENT",
     "MONGODB_URI",
-    # Perplexity
-    "PERPLEXITY_MODEL",
-    "PERPLEXITY_CONTEXT_SIZE",
-    # OpenAI
-    "OPENAI_SEARCH_MODEL",
-    "OPENAI_ARTICLE_MODEL",
-    # Tavily
-    "TAVILY_SEARCH_DEPTH",
-    "TAVILY_MAX_RESULTS",
-    "TAVILY_DAYS",
-    "TAVILY_TIME_RANGE",
-    # Pinecone
+    # shared
     "PINECONE_INDEX_NAME",
     "DEDUPLICATION_NAMESPACE",
-    "REPORT_NAMESPACE",
-    # Embeddings
-    "EMBEDDING_MODEL",
-    "EMBEDDING_DIMENSIONS",
-    "SIMILARITY_THRESHOLD",
-    # Misc
+    "research_NAMESPACE",
+    # misc
     "CURRENT_DATE",
 ] 

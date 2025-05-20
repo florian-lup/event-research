@@ -7,12 +7,18 @@ from typing import Dict, Any, List
 
 from pinecone import Index  # type: ignore
 
-from ..config import DEDUPLICATION_NAMESPACE, SIMILARITY_THRESHOLD
+from ..config import DEDUPLICATION_NAMESPACE
+
+# ---------------------------------------------------------------------------
+# Local deduplication thresholds
+# ---------------------------------------------------------------------------
+SIMILARITY_THRESHOLD: float = 0.8
+DEDUPLICATION_TOP_K: int = 5
 
 logger = logging.getLogger(__name__)
 
 
-def check_duplicate_in_pinecone(
+def check_duplicates(
     pinecone_index: Index,
     embedding: List[float],
     metadata: Dict[str, Any],
@@ -23,8 +29,8 @@ def check_duplicate_in_pinecone(
     query_response = pinecone_index.query(
         namespace=DEDUPLICATION_NAMESPACE,
         vector=embedding,
-        top_k=5,
-        include_metadata=True,
+        top_k=DEDUPLICATION_TOP_K,
+        include_metadata=False,
     )
 
     for match in query_response.matches:
@@ -37,4 +43,4 @@ def check_duplicate_in_pinecone(
     logger.info("No duplicates found for: %s", metadata.get("title"))
     return False
 
-__all__ = ["check_duplicate_in_pinecone"] 
+__all__ = ["check_duplicates"] 

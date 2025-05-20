@@ -6,7 +6,12 @@ import logging
 from typing import Iterable, List
 
 from ..clients.openai_client import get_openai
-from ..config import EMBEDDING_MODEL, EMBEDDING_DIMENSIONS
+
+# ---------------------------------------------------------------------------
+# Local embedding settings
+# ---------------------------------------------------------------------------
+EMBEDDING_MODEL: str = "text-embedding-3-large"
+EMBEDDING_DIMENSIONS: int = 3072
 
 logger = logging.getLogger(__name__)
 _openai = get_openai()

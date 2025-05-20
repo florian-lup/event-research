@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List
 
-from ..config import CURRENT_DATE
 
 # Type alias for embedding vectors
 Embedding = List[float]
@@ -15,10 +14,10 @@ Embedding = List[float]
 class Event:
     """A significant global event and its associated metadata."""
 
-    date: str = field(default_factory=lambda: CURRENT_DATE)
+    date: str = ""
     title: str = ""
     summary: str = ""
-    report: str = ""
+    research: str = ""
     sources: List[str] = field(default_factory=list)
 
     def overview_text(self) -> str:

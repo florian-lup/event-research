@@ -1,76 +1,75 @@
-# Timeline Researcher
+# Event Research Pipeline
 
-A tool that automatically researches current global events, deduplicates them, and stores them in both Pinecone (for vector search) and MongoDB (for persistent storage).
+A comprehensive pipeline for discovering, researching, deduplicating, and storing significant events. This project uses AI-powered research tools and vector databases to maintain a curated collection of events with their details and contexts.
 
 ## Features
 
-- Searches for top 5 global events of the day using Perplexity API
-- Generates embeddings for each event using OpenAI
-- Deduplicates events using Pinecone similarity search
-- Researches additional details for each unique event with gpt and tavily
-- Stores events in Pinecone for vector search and MongoDB for persistent storage
-
-## Requirements
-
-- Python 3.8+
-- Perplexity API key
-- OpenAI API key
-- Pinecone API key
-- MongoDB connection string
+- **Event Discovery**: Automatically searches for significant events from various sources
+- **Deduplication**: Uses vector similarity to prevent duplicate events from being processed
+- **AI-Powered Research**: Enriches event data with additional context and details
+- **Persistent Storage**: Stores processed events in both MongoDB and Pinecone vector database
 
 ## Installation
 
-1. Clone the repository:
+1. Clone the repository
 ```bash
-git clone https://github.com/yourusername/timeline-researcher.git
-cd timeline-researcher
+git clone https://github.com/florian-lup/event-research.git
+cd event-research
 ```
 
-2. Install the dependencies:
+2. Create and activate a virtual environment
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. Install dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Create a `.env` file with your API keys:
+4. Create a `.env` file in the project root directory with your API keys:
 ```
-PERPLEXITY_API_KEY=your_perplexity_api_key
-OPENAI_API_KEY=your_openai_api_key
-PINECONE_API_KEY=your_pinecone_api_key
+PERPLEXITY_API_KEY=your_perplexity_key
+OPENAI_API_KEY=your_openai_key
+TAVILY_API_KEY=your_tavily_key
+PINECONE_API_KEY=your_pinecone_key
 PINECONE_ENVIRONMENT=your_pinecone_environment
-MONGODB_URI=your_mongodb_uri
+MONGODB_URI=your_mongodb_connection_string
 ```
 
 ## Usage
 
-Run the pipeline via the package's entry-point:
-
+Run the entire pipeline:
 ```bash
 python -m event_research
 ```
 
-The command will:
-1. Discover top global events using the Perplexity API.
-2. Embed each headline+summary and deduplicate them with Pinecone.
-3. Enrich unique events with detailed analysis and sources.
-4. Persist vectors to Pinecone and full documents to MongoDB.
+Or import and use in your own Python code:
+```python
+from event_research import run
+run()
+```
 
-## Project Structure (simplified)
+## Project Structure
 
-- `event_research/`
-  - `__init__.py` – exposes `run()` helper.
-  - `__main__.py` – enables `python -m event_research`.
-  - `pipeline.py` – <80-line orchestration of the workflow.
-  - `config.py`, `logging_config.py` – configuration & logging.
-  - `clients/` – singleton wrappers for OpenAI, Pinecone, MongoDB, Tavily, Perplexity.
-  - `services/` – discovery, embeddings, deduplication, enrichment, storage.
-  - `models.py` – dataclass `Event`.
-  - `utils/` – shared helpers (e.g. text cleaning).
-- `tests/` – unit tests for utilities and models.
-- `requirements.txt` – pinned dependencies.
-- `.env.example` – template for environment variables (real `.env` ignored).
+- `event_research/`: Main package
+  - `clients/`: API clients for various services
+  - `models/`: Data models
+  - `services/`: Core services for different parts of the pipeline
+  - `utils/`: Utility functions and helpers
+  - `workflows/`: End-to-end workflows
+- `tests/` – unit tests for functions and workflows
+- `requirements.txt` – pinned dependencies
+- `.env.example` – environment variables
 
-## Notes
 
-- The script uses current date filters to ensure recent events
-- Duplicate detection uses a similarity threshold of 0.8
-- All steps are logged for monitoring and debugging 
+
+## Dependencies
+
+- Perplexity (for event search and discovery)
+- OpenAI (for embeddings and research)
+- Pinecone (for vector storage and similarity search)
+- MongoDB (for persistent document storage)
+- Tavily (for web search capabilities)
+- Additional utilities (see `requirements.txt`)

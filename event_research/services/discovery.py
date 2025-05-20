@@ -2,42 +2,38 @@
 
 from __future__ import annotations
 
-import json
 import logging
-import re
 from typing import List, Dict, Any
 
 from ..clients.perplexity_client import get_perplexity_session
 from ..config import (
     CURRENT_DATE,
     PERPLEXITY_API_KEY,
-    PERPLEXITY_MODEL,
-    PERPLEXITY_CONTEXT_SIZE,
 )
-from ..utils.text_cleaning import strip_think_blocks
+from ..utils.datetime_utils import get_current_timestamp
+
+# ---------------------------------------------------------------------------
+# Local Perplexity settings (only used by this service)
+# ---------------------------------------------------------------------------
+PERPLEXITY_MODEL: str = "sonar-reasoning-pro"
+# accepted values: "low", "medium", "high"
+PERPLEXITY_CONTEXT_SIZE: str = "high"
+
+from ..utils.text_cleaning import strip_think_blocks, sanitize_llm_text
+from ..utils.llm_parsing import extract_structured_json
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Local helpers (thin wrappers around shared utils)
+# ---------------------------------------------------------------------------
 
 def _extract_json_from_response(response_text: str) -> Dict[str, Any]:
-    """Best-effort extraction of JSON from a Perplexity response string."""
-    # Remove hidden "think" blocks first
-    response_text = strip_think_blocks(response_text)
+    """Wrapper invoking the shared LLM-parsing utility."""
+    cleaned = strip_think_blocks(response_text)
+    return extract_structured_json(cleaned)
 
-    # Try fenced block first
-    json_match = re.search(r"```json\s*(.*?)\s*```", response_text, re.DOTALL)
-
-    if not json_match:
-        # Fallback to generic braces capture
-        json_match = re.search(r"(\{.*\})", response_text, re.DOTALL)
-        if not json_match:
-            raise ValueError("Could not locate JSON in Perplexity response")
-
-    json_text = json_match.group(1).strip()
-    return json.loads(json_text)
-
-
-def search_events_with_perplexity() -> List[Dict[str, Any]]:
+def search_events() -> List[Dict[str, Any]]:
     """Query Perplexity for the five most significant global events today."""
     logger.info("Searching for top 5 global events with Perplexity API…")
 
@@ -68,7 +64,7 @@ def search_events_with_perplexity() -> List[Dict[str, Any]]:
                     "technology, environment, health, conflict, culture).\n"
                     "3) Return an array named 'events', where each item contains:\n"
                     "   • title – concise, ≤90 characters, written as a compelling headline.\n"
-                    "   • summary – 400-600 characters explaining what happened, why it matters, "
+                    "   • summary – ~500 characters explaining what happened, why it matters, "
                     "and key details.\n"
                 ),
             },
@@ -121,18 +117,18 @@ def search_events_with_perplexity() -> List[Dict[str, Any]]:
     # Build complete event objects with metadata fields
     complete_events: List[Dict[str, Any]] = []
     for event in events:
-        cleaned_summary = re.sub(r"\[\d+\]", "", event["summary"])  # strip citations
+        cleaned_summary = sanitize_llm_text(event["summary"], title=event["title"], remove_citations=True, remove_markdown=True)
 
         complete_events.append(
             {
-                "date": CURRENT_DATE,
+                "date": get_current_timestamp(),
                 "title": event["title"],
                 "summary": cleaned_summary,
-                "report": "",
+                "research": "",
                 "sources": [],
             }
         )
 
     return complete_events
 
-__all__ = ["search_events_with_perplexity"] 
+__all__ = ["search_events"] 

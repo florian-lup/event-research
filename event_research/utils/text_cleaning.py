@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Final
+from typing import Final, Any
 
 # ---------------------------------------------------------------------------
 # Public helpers
@@ -40,6 +40,7 @@ def sanitize_llm_text(
     *,
     remove_citations: bool = True,
     remove_markdown: bool = False,
+    **_: Any,
 ) -> str:
     """Standardise LLM output for downstream parsing.
 
