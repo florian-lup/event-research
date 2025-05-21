@@ -15,7 +15,9 @@ from ..config import (
 from .embeddings import generate_embedding, chunk_text
 
 logger = logging.getLogger(__name__)
-_db = get_mongo_client()["events"]["global"]
+_db = get_mongo_client()["events"]["articles"]
+# Add a handle to the analytics.metrics collection for tracking article counts
+_metrics_collection = get_mongo_client()["analytics"]["metrics"]
 
 
 def upsert_to_pinecone(
@@ -66,5 +68,15 @@ def store_to_mongodb(event: Dict[str, Any]) -> None:
     """Insert *event* document into MongoDB."""
     result = _db.insert_one(event)
     logger.info("Stored event to MongoDB with _id=%s", result.inserted_id)
+
+    # ------------------------------------------------------------------
+    # Update analytics.metrics with the running total of articles
+    # ------------------------------------------------------------------
+    total = _db.count_documents({})        # or estimated_document_count()
+    _metrics_collection.update_one(
+        {"pageId": "timeline", "metric": "entries"},
+        {"$set": {"count": total}},
+        upsert=True,
+    )
 
 __all__ = ["upsert_to_pinecone", "store_to_mongodb"] 
