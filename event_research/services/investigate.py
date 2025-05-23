@@ -52,7 +52,7 @@ def _generate_search_query(title: str) -> str:
         return title
 
 
-def research_event(event: Dict[str, Any]) -> Dict[str, Any]:
+def investigate_event(event: Dict[str, Any]) -> Dict[str, Any]:
     """Populate `event` with a detailed *research* and *sources* list."""
     logger.info("Researching details for event via Tavily: %s", event["title"])
 
@@ -134,4 +134,4 @@ def research_event(event: Dict[str, Any]) -> Dict[str, Any]:
     logger.info("Enriched event '%s' with %d sources", event["title"], len(unique_sources))
     return event
 
-__all__ = ["research_event"] 
+__all__ = ["investigate_event"] 

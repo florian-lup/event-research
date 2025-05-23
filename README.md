@@ -1,13 +1,13 @@
 # Event Research Pipeline
 
-A comprehensive pipeline for discovering, researching, deduplicating, and storing significant events. This project uses AI-powered research tools and vector databases to maintain a curated collection of events with their details and contexts.
+A comprehensive pipeline for discovering, investigating, deduplicating, and storing significant events. This project uses AI-powered research tools and vector databases to maintain a curated collection of events with their details and contexts.
 
 ## Features
 
-- **Event Discovery**: Automatically searches for significant events from various sources
+- **Discovery**: Automatically searches for significant events from various sources
 - **Deduplication**: Uses vector similarity to prevent duplicate events from being processed
-- **AI-Powered Research**: Enriches event data with additional context and details
-- **Persistent Storage**: Stores processed events in both MongoDB and Pinecone vector database
+- **Investigation**: Enriches event data with additional context and details
+- **Storage**: Stores processed events in both MongoDB Atlas and Pinecone database
 
 ## Installation
 

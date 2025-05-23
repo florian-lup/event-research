@@ -9,7 +9,7 @@ from ..clients.pinecone_client import get_index as get_pinecone_index
 from ..services.discovery import search_events
 from ..services.embeddings import generate_embedding
 from ..services.deduplication import check_duplicates
-from ..services.research import research_event
+from ..services.investigate import investigate_event
 from ..services.storage import upsert_to_pinecone, store_to_mongodb
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 def run() -> None:
     """Execute the full pipeline once."""
-    logger.info("Starting timeline researcher workflow")
+    logger.info("Starting event research workflow")
 
     # 1. Discover events
     events = search_events()
@@ -35,7 +35,7 @@ def run() -> None:
         if not check_duplicates(
             pinecone_index, embedding, {"title": event["title"], "summary": event["summary"]}
         ):
-            detailed_event = research_event(event)
+            detailed_event = investigate_event(event)
             unique_events.append((detailed_event, embedding))
         else:
             duplicate_count += 1

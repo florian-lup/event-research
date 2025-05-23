@@ -45,14 +45,14 @@ class TestEventPipeline(unittest.TestCase):
     @patch('event_research.workflows.event_pipeline.search_events')
     @patch('event_research.workflows.event_pipeline.generate_embedding')
     @patch('event_research.workflows.event_pipeline.check_duplicates')
-    @patch('event_research.workflows.event_pipeline.research_event')
+    @patch('event_research.workflows.event_pipeline.investigate_event')
     @patch('event_research.workflows.event_pipeline.upsert_to_pinecone')
     @patch('event_research.workflows.event_pipeline.store_to_mongodb')
     def test_run_with_unique_events(
         self, 
         mock_store_mongodb, 
         mock_upsert_pinecone, 
-        mock_research_event, 
+        mock_investigate_event, 
         mock_check_duplicates, 
         mock_generate_embedding, 
         mock_search_events, 
@@ -62,7 +62,7 @@ class TestEventPipeline(unittest.TestCase):
         mock_search_events.return_value = self.test_events
         mock_generate_embedding.return_value = self.test_embedding
         mock_check_duplicates.return_value = False  # No duplicates
-        mock_research_event.return_value = self.researched_event
+        mock_investigate_event.return_value = self.researched_event
         mock_pinecone_index = MagicMock()
         mock_get_pinecone_index.return_value = mock_pinecone_index
         
@@ -73,7 +73,7 @@ class TestEventPipeline(unittest.TestCase):
         mock_search_events.assert_called_once()
         self.assertEqual(mock_generate_embedding.call_count, 2)  # Called for each event
         self.assertEqual(mock_check_duplicates.call_count, 2)  # Called for each event
-        self.assertEqual(mock_research_event.call_count, 2)  # Called for each unique event
+        self.assertEqual(mock_investigate_event.call_count, 2)  # Called for each unique event
         self.assertEqual(mock_upsert_pinecone.call_count, 2)  # Called for each processed event
         self.assertEqual(mock_store_mongodb.call_count, 2)  # Called for each processed event
 
@@ -81,14 +81,14 @@ class TestEventPipeline(unittest.TestCase):
     @patch('event_research.workflows.event_pipeline.search_events')
     @patch('event_research.workflows.event_pipeline.generate_embedding')
     @patch('event_research.workflows.event_pipeline.check_duplicates')
-    @patch('event_research.workflows.event_pipeline.research_event')
+    @patch('event_research.workflows.event_pipeline.investigate_event')
     @patch('event_research.workflows.event_pipeline.upsert_to_pinecone')
     @patch('event_research.workflows.event_pipeline.store_to_mongodb')
     def test_run_with_all_duplicates(
         self, 
         mock_store_mongodb, 
         mock_upsert_pinecone, 
-        mock_research_event, 
+        mock_investigate_event, 
         mock_check_duplicates, 
         mock_generate_embedding, 
         mock_search_events, 
@@ -108,7 +108,7 @@ class TestEventPipeline(unittest.TestCase):
         mock_search_events.assert_called_once()
         self.assertEqual(mock_generate_embedding.call_count, 2)  # Called for each event
         self.assertEqual(mock_check_duplicates.call_count, 2)  # Called for each event
-        mock_research_event.assert_not_called()  # Not called for duplicates
+        mock_investigate_event.assert_not_called()  # Not called for duplicates
         mock_upsert_pinecone.assert_not_called()  # Not called when all are duplicates
         mock_store_mongodb.assert_not_called()  # Not called when all are duplicates
 
@@ -116,14 +116,14 @@ class TestEventPipeline(unittest.TestCase):
     @patch('event_research.workflows.event_pipeline.search_events')
     @patch('event_research.workflows.event_pipeline.generate_embedding')
     @patch('event_research.workflows.event_pipeline.check_duplicates')
-    @patch('event_research.workflows.event_pipeline.research_event')
+    @patch('event_research.workflows.event_pipeline.investigate_event')
     @patch('event_research.workflows.event_pipeline.upsert_to_pinecone')
     @patch('event_research.workflows.event_pipeline.store_to_mongodb')
     def test_run_with_mixed_results(
         self, 
         mock_store_mongodb, 
         mock_upsert_pinecone, 
-        mock_research_event, 
+        mock_investigate_event, 
         mock_check_duplicates, 
         mock_generate_embedding, 
         mock_search_events, 
@@ -134,7 +134,7 @@ class TestEventPipeline(unittest.TestCase):
         mock_generate_embedding.return_value = self.test_embedding
         # First event is unique, second is duplicate
         mock_check_duplicates.side_effect = [False, True]
-        mock_research_event.return_value = self.researched_event
+        mock_investigate_event.return_value = self.researched_event
         mock_pinecone_index = MagicMock()
         mock_get_pinecone_index.return_value = mock_pinecone_index
         
@@ -145,7 +145,7 @@ class TestEventPipeline(unittest.TestCase):
         mock_search_events.assert_called_once()
         self.assertEqual(mock_generate_embedding.call_count, 2)  # Called for each event
         self.assertEqual(mock_check_duplicates.call_count, 2)  # Called for each event
-        mock_research_event.assert_called_once()  # Called only for the unique event
+        mock_investigate_event.assert_called_once()  # Called only for the unique event
         mock_upsert_pinecone.assert_called_once()  # Called only for the unique event
         mock_store_mongodb.assert_called_once()  # Called only for the unique event
 

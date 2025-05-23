@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from event_research.services.research import research_event, _generate_search_query
+from event_research.services.research import investigate_event, _generate_search_query
 
 
 class TestResearch(unittest.TestCase):
@@ -18,7 +18,7 @@ class TestResearch(unittest.TestCase):
 
     @patch('event_research.services.research._tavily')
     @patch('event_research.services.research._generate_search_query')
-    def test_research_event_success(self, mock_generate_query, mock_tavily):
+    def test_investigate_event_success(self, mock_generate_query, mock_tavily):
         # Setup mocks
         mock_generate_query.return_value = "Test Event search query"
         
@@ -45,7 +45,7 @@ class TestResearch(unittest.TestCase):
             mock_openai.chat.completions.create.return_value = mock_response
             
             # Call the function
-            result = research_event(self.test_event)
+            result = investigate_event(self.test_event)
             
             # Assert results
             self.assertEqual(len(result["sources"]), 2)
@@ -61,13 +61,13 @@ class TestResearch(unittest.TestCase):
 
     @patch('event_research.services.research._tavily')
     @patch('event_research.services.research._generate_search_query')
-    def test_research_event_no_tavily_results(self, mock_generate_query, mock_tavily):
+    def test_investigate_event_no_tavily_results(self, mock_generate_query, mock_tavily):
         # Setup mocks
         mock_generate_query.return_value = "Test Event search query"
         mock_tavily.search.return_value = {"results": []}
         
         # Call the function
-        result = research_event(self.test_event)
+        result = investigate_event(self.test_event)
         
         # Assert results - should return original event without changes
         self.assertEqual(result, self.test_event)
