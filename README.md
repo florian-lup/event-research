@@ -59,6 +59,7 @@ run()
   - `services/`: Core services for different parts of the pipeline
   - `utils/`: Utility functions and helpers
   - `workflows/`: End-to-end workflows
+- `main.py`: Entry point for deployment platforms
 - `tests/` – unit tests for functions and workflows
 - `requirements.txt` – pinned dependencies
 - `.env.example` – environment variables
