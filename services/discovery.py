@@ -123,7 +123,7 @@ def search_events() -> List[Dict[str, Any]]:
                 "date": get_current_timestamp(),
                 "title": event["title"],
                 "summary": cleaned_summary,
-                "research": "",
+                "story": "",
                 "sources": [],
             }
         )

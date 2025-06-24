@@ -128,7 +128,7 @@ def investigate_event(event: Dict[str, Any]) -> Dict[str, Any]:
         logger.error("GPT-4o article generation failed: %s – using concatenated snippets", exc)
         cleaned_article = aggregated_text
 
-    event["research"] = cleaned_article.strip()
+    event["story"] = cleaned_article.strip()
     event["sources"] = unique_sources
     logger.info("Enriched event '%s' with %d sources", event["title"], len(unique_sources))
     return event

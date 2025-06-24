@@ -47,3 +47,5 @@ site/
 # OS specific
 .DS_Store
 Thumbs.db 
+
+notes.md

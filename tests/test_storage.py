@@ -15,7 +15,7 @@ class TestStorage(unittest.TestCase):
         self.test_event = {
             "title": "Test Event",
             "summary": "This is a test event summary.",
-            "research": "This is a detailed research about the test event. It contains multiple sentences to test chunking.",
+            "story": "This is a detailed story about the test event. It contains multiple sentences to test chunking.",
             "sources": ["https://example.com/1", "https://example.com/2"]
         }
         self.test_embedding = [0.1] * 3072
@@ -23,7 +23,7 @@ class TestStorage(unittest.TestCase):
 
     @patch('event_research.services.storage.generate_embedding')
     @patch('event_research.services.storage.chunk_text')
-    def test_upsert_to_pinecone_with_research(self, mock_chunk_text, mock_generate_embedding):
+    def test_upsert_to_pinecone_with_story(self, mock_chunk_text, mock_generate_embedding):
         # Setup mocks
         mock_chunk_text.return_value = ["Chunk 1", "Chunk 2"]
         mock_generate_embedding.return_value = self.test_embedding
@@ -48,24 +48,24 @@ class TestStorage(unittest.TestCase):
         self.assertTrue(any("chunk_index" in vector[2] for vector in second_call_vectors))
         self.assertTrue(any("sources" in vector[2] for vector in second_call_vectors))
         
-        # Verify chunk_text was called with the research
-        mock_chunk_text.assert_called_once_with(self.test_event["research"])
+        # Verify chunk_text was called with the story
+        mock_chunk_text.assert_called_once_with(self.test_event["story"])
         
         # Verify generate_embedding was called for each chunk
         self.assertEqual(mock_generate_embedding.call_count, 2)
 
     @patch('event_research.services.storage.chunk_text')
-    def test_upsert_to_pinecone_no_research(self, mock_chunk_text):
-        # Setup event with no research
-        event_no_research = {
+    def test_upsert_to_pinecone_no_story(self, mock_chunk_text):
+        # Setup event with no story
+        event_no_story = {
             "title": "Test Event",
             "summary": "This is a test event summary.",
-            "research": "",
+            "story": "",
             "sources": []
         }
         
         # Call the function
-        upsert_to_pinecone(self.mock_index, event_no_research, self.test_embedding)
+        upsert_to_pinecone(self.mock_index, event_no_story, self.test_embedding)
         
         # Assertions - verify the index was called only once (for overview)
         self.mock_index.upsert.assert_called_once()

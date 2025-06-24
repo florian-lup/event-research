@@ -10,7 +10,7 @@ from pinecone import Index  # type: ignore
 from clients import get_mongo_client
 from config import (
     DEDUPLICATION_NAMESPACE,
-    research_NAMESPACE,
+    RESEARCH_NAMESPACE,
 )
 from services.embeddings import generate_embedding, chunk_text
 
@@ -39,14 +39,14 @@ def upsert_to_pinecone(
         vectors=[(event_id, overview_embedding, overview_metadata)],
     )
 
-    # 2) Chunked research vectors
-    research: str = event.get("research", "")
-    if not research:
-        logger.warning("No research for event %s – skipping chunk upsert", event["title"])
+    # 2) Chunked story vectors
+    story: str = event.get("story", "")
+    if not story:
+        logger.warning("No story for event %s – skipping chunk upsert", event["title"])
         return
 
     vectors: List[Tuple[str, List[float], Dict[str, Any]]] = []
-    for idx, chunk in enumerate(chunk_text(research)):
+    for idx, chunk in enumerate(chunk_text(story)):
         chunk_id = f"{event_id}_chunk_{idx}"
         chunk_embedding = generate_embedding(chunk)
         chunk_metadata = {
@@ -58,8 +58,8 @@ def upsert_to_pinecone(
         }
         vectors.append((chunk_id, chunk_embedding, chunk_metadata))
 
-    pinecone_index.upsert(namespace=research_NAMESPACE, vectors=vectors)
-    logger.info("Upserted %d research chunks for event %s", len(vectors), event["title"])
+    pinecone_index.upsert(namespace=RESEARCH_NAMESPACE, vectors=vectors)
+    logger.info("Upserted %d story chunks for event %s", len(vectors), event["title"])
 
 
 def store_to_mongodb(event: Dict[str, Any]) -> None:

@@ -31,7 +31,7 @@ MONGODB_URI: str | None = os.getenv("MONGODB_URI")
 # ---------------------------------------------------------------------------
 PINECONE_INDEX_NAME: str = "events"
 DEDUPLICATION_NAMESPACE: str = "deduplication"
-research_NAMESPACE: str = "research"
+RESEARCH_NAMESPACE: str = "research"
 
 # ---------------------------------------------------------------------------
 # Miscellaneous
@@ -53,7 +53,7 @@ __all__ = [
     # shared
     "PINECONE_INDEX_NAME",
     "DEDUPLICATION_NAMESPACE",
-    "research_NAMESPACE",
+    "RESEARCH_NAMESPACE",
     # misc
     "CURRENT_DATE",
 ] 

@@ -17,7 +17,7 @@ class Event:
     date: str = ""
     title: str = ""
     summary: str = ""
-    research: str = ""
+    story: str = ""
     sources: List[str] = field(default_factory=list)
 
     def overview_text(self) -> str:

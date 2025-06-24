@@ -17,14 +17,14 @@ class TestEventPipeline(unittest.TestCase):
                 "date": "2023-07-01",
                 "title": "Test Event 1",
                 "summary": "This is the first test event summary.",
-                "research": "",
+                "story": "",
                 "sources": []
             },
             {
                 "date": "2023-07-01",
                 "title": "Test Event 2",
                 "summary": "This is the second test event summary.",
-                "research": "",
+                "story": "",
                 "sources": []
             }
         ]
@@ -37,7 +37,7 @@ class TestEventPipeline(unittest.TestCase):
             "date": "2023-07-01",
             "title": "Test Event 1",
             "summary": "This is the first test event summary.",
-            "research": "This is a detailed research about the event.",
+            "story": "This is a detailed story about the event.",
             "sources": ["https://example.com/1", "https://example.com/2"]
         }
 

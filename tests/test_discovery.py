@@ -65,8 +65,8 @@ class TestDiscovery(unittest.TestCase):
             self.assertEqual(event["date"], CURRENT_DATE)
             self.assertIn("title", event)
             self.assertIn("summary", event)
-            self.assertIn("research", event)
-            self.assertEqual(event["research"], "")
+                    self.assertIn("story", event)
+        self.assertEqual(event["story"], "")
             self.assertIn("sources", event)
             self.assertEqual(event["sources"], [])
             
