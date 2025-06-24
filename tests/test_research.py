@@ -5,7 +5,8 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from event_research.services.research import investigate_event, _generate_search_query
+from services import investigate_event
+from services.investigate import _generate_search_query  # private function
 
 
 class TestResearch(unittest.TestCase):

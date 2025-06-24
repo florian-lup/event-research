@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from event_research.services.deduplication import check_duplicates
+from services import check_duplicates
 
 
 class TestDeduplication(unittest.TestCase):

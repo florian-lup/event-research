@@ -5,8 +5,9 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from event_research.services.discovery import search_events, _extract_json_from_response
-from event_research.config import CURRENT_DATE
+from services import search_events
+from services.discovery import _extract_json_from_response  # private function
+from config import CURRENT_DATE
 
 
 class TestDiscovery(unittest.TestCase):

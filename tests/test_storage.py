@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from event_research.services.storage import upsert_to_pinecone, store_to_mongodb
+from services import upsert_to_pinecone, store_to_mongodb
 
 
 class TestStorage(unittest.TestCase):

@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from event_research.services.embeddings import generate_embedding, chunk_text
+from services import generate_embedding, chunk_text
 
 
 class TestEmbeddings(unittest.TestCase):

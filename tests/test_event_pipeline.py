@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from event_research.workflows.event_pipeline import run
+from workflows.event_pipeline import run
 
 
 class TestEventPipeline(unittest.TestCase):
