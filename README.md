@@ -1,76 +1,60 @@
 # Event Research Pipeline
 
-A comprehensive pipeline for discovering, investigating, deduplicating, and storing significant events. This project uses AI-powered research tools and vector databases to maintain a curated collection of events with their details and contexts.
+A comprehensive pipeline for discovering, investigating, deduplicating, and storing significant events. This project uses AI-powered research tools and vector databases to build and maintain a curated collection of global events with rich context and details.
 
 ## Features
 
-- **Discovery**: Automatically searches for significant events from various sources
-- **Deduplication**: Uses vector similarity to prevent duplicate events from being processed
-- **Investigation**: Enriches event data with additional context and details
-- **Storage**: Stores processed events in both MongoDB Atlas and Pinecone database
+- **Discovery**: Leverages the Tavily and Perplexity APIs to automatically search for and identify potentially significant events from a wide range of online sources.
+- **Investigation**: Utilizes OpenAI's powerful language models to enrich the discovered events. It generates concise summaries, identifies key people, organizations, and locations involved, and extracts precise dates and times.
+- **Deduplication**: Generates vector embeddings for each event's description using OpenAI's models. It then uses Pinecone's vector database to perform similarity searches, effectively identifying and filtering out duplicate events.
+- **Storage**: Persists the processed events in a dual-database system. Structured event data (summaries, dates, entities) is stored in MongoDB Atlas for robust querying and retrieval, while the corresponding vector embeddings are stored in Pinecone for efficient real-time similarity searches.
 
-## Installation
+## Technologies Used
 
-1. Clone the repository
-```bash
-git clone https://github.com/florian-lup/event-research.git
-cd event-research
-```
+- **AI & LLM Services**:
+  - OpenAI: For data enrichment, summarization, and generating vector embeddings.
+  - Perplexity AI: For AI-powered search and discovery.
+  - Tavily: For AI-powered research and discovery.
+- **Databases**:
+  - MongoDB Atlas: For primary storage of structured event data.
+  - Pinecone: For storing vector embeddings and performing similarity searches.
+- **Core Python Libraries**:
+  - `requests` & `httpx`: For making HTTP requests to external APIs.
+  - `pymongo`: The official Python driver for MongoDB.
+  - `pinecone-client`: The official client for interacting with Pinecone.
+  - `openai`: The official Python library for the OpenAI API.
+  - `python-dotenv`: For managing environment variables.
+  - `tavily-python`: The official client for the Tavily API.
 
-2. Create and activate a virtual environment
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
+## Workflow
 
-3. Install dependencies
-```bash
-pip install -r requirements.txt
-```
+The entire process is orchestrated by the `event_pipeline.py` workflow, which seamlessly connects the different services:
 
-4. Create a `.env` file in the project root directory with your API keys:
-```
-PERPLEXITY_API_KEY=your_perplexity_key
-OPENAI_API_KEY=your_openai_key
-TAVILY_API_KEY=your_tavily_key
-PINECONE_API_KEY=your_pinecone_key
-PINECONE_ENVIRONMENT=your_pinecone_environment
-MONGODB_URI=your_mongodb_connection_string
-```
+1.  **Discover**: New events are found.
+2.  **Investigate**: Events are enriched with details.
+3.  **Deduplicate**: Redundant events are filtered out.
+4.  **Store**: Clean, unique events are saved to the databases.
 
-## Usage
+## Getting Started
 
-Run the entire pipeline:
-```bash
-python -m event_research
-```
+1.  **Clone the repository:**
+    ```bash
+    git clone <repository-url>
+    cd timeline-journalist
+    ```
+2.  **Set up a virtual environment:**
+    ```bash
+    python -m venv venv
+    source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
+    ```
+3.  **Install dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+4.  **Configure environment variables:**
+    Create a `.env` file in the root directory and add the necessary API keys and connection strings for the services used (OpenAI, MongoDB, Pinecone, etc.).
 
-Or import and use in your own Python code:
-```python
-from event_research import run
-run()
-```
-
-## Project Structure
-
-- `event_research/`: Main package
-  - `clients/`: API clients for various services
-  - `models/`: Data models
-  - `services/`: Core services for different parts of the pipeline
-  - `utils/`: Utility functions and helpers
-  - `workflows/`: End-to-end workflows
-- `main.py`: Entry point for deployment platforms
-- `tests/` – unit tests for functions and workflows
-- `requirements.txt` – pinned dependencies
-- `.env.example` – environment variables
-
-
-
-## Dependencies
-
-- Perplexity (for event search and discovery)
-- OpenAI (for embeddings and research)
-- Pinecone (for vector storage and similarity search)
-- MongoDB (for persistent document storage)
-- Tavily (for web search capabilities)
-- Additional utilities (see `requirements.txt`)
+5.  **Run the pipeline:**
+    ```bash
+    python main.py
+    ```
